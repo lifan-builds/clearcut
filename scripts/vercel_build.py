@@ -38,10 +38,10 @@ def copy_static_assets() -> None:
 
 
 def validate_sqlite_db(db_path: Path) -> tuple[int, str | None]:
-    if not db_path.exists() or db_path.stat().st_size == 0:
+    if not db_path.is_file() or db_path.stat().st_size == 0:
         raise RuntimeError(f"{db_path} does not exist or is empty")
 
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
     try:
         integrity = conn.execute("PRAGMA integrity_check").fetchone()
         if not integrity or str(integrity[0]).lower() != "ok":
@@ -52,7 +52,10 @@ def validate_sqlite_db(db_path: Path) -> tuple[int, str | None]:
     finally:
         conn.close()
 
-    return int(count), latest
+    count = int(count)
+    if count == 0:
+        raise RuntimeError("Refusing to deploy an empty deal snapshot")
+    return count, latest
 
 
 def _drop_redundant_history_index(conn: sqlite3.Connection) -> bool:

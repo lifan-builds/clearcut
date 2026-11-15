@@ -190,6 +190,55 @@ def test_compaction_failure_keeps_previous_bundle_and_removes_temporary_download
     assert list(destination.parent.glob('deals.*.db')) == []
 
 
+def test_validate_sqlite_db_rejects_empty_missing_and_corrupt_snapshots(tmp_path, monkeypatch):
+    build = load_module('vercel_build_validation_test', ROOT / 'scripts/vercel_build.py')
+    monkeypatch.setattr(build, 'ROOT', tmp_path)
+    monkeypatch.setattr(build, 'STATIC_DEST', tmp_path / 'public/static')
+
+    empty_deals_db = tmp_path / 'empty_deals.db'
+    with sqlite3.connect(empty_deals_db) as conn:
+        conn.execute('CREATE TABLE deals (scraped_at TEXT)')
+
+    with pytest.raises(RuntimeError, match='Refusing to deploy an empty deal snapshot'):
+        build.validate_sqlite_db(empty_deals_db)
+
+    monkeypatch.setattr(build, 'DB_DEST', empty_deals_db)
+    monkeypatch.setenv('VERCEL_SKIP_DB_DOWNLOAD', '1')
+    with pytest.raises(RuntimeError, match='Refusing to deploy an empty deal snapshot'):
+        build.download_deals_db()
+    assert build.main() == 1
+
+    missing_db = tmp_path / 'does_not_exist.db'
+    with pytest.raises(RuntimeError, match='does not exist or is empty'):
+        build.validate_sqlite_db(missing_db)
+    assert not missing_db.exists()
+
+    zero_byte_db = tmp_path / 'zero.db'
+    zero_byte_db.write_bytes(b'')
+    with pytest.raises(RuntimeError, match='does not exist or is empty'):
+        build.validate_sqlite_db(zero_byte_db)
+
+    corrupt_db = tmp_path / 'corrupt.db'
+    corrupt_db.write_bytes(b'not a sqlite database header')
+    with pytest.raises((RuntimeError, sqlite3.DatabaseError)):
+        build.validate_sqlite_db(corrupt_db)
+
+    no_table_db = tmp_path / 'no_table.db'
+    with sqlite3.connect(no_table_db) as conn:
+        conn.execute('CREATE TABLE unrelated (id INTEGER)')
+    with pytest.raises(sqlite3.OperationalError):
+        build.validate_sqlite_db(no_table_db)
+
+    special_dir = tmp_path / 'dir with spaces #hash %25'
+    special_dir.mkdir()
+    special_db = special_dir / 'deals#v1%20?snap.db'
+    with sqlite3.connect(special_db) as conn:
+        conn.execute('CREATE TABLE deals (scraped_at TEXT)')
+        conn.execute("INSERT INTO deals VALUES ('2026-11-14T00:00:00')")
+    assert build.validate_sqlite_db(special_db) == (1, '2026-11-14T00:00:00')
+    assert list(special_dir.iterdir()) == [special_db]
+
+
 def test_root_entrypoint_loads_fresh_powder_static_assets(monkeypatch):
     monkeypatch.setenv('DISABLE_APP_LIFESPAN', '1')
     monkeypatch.setenv('PUBLIC_MODE', '1')
