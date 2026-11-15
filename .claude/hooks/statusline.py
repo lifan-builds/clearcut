@@ -48,15 +48,42 @@ def _read_json(path: Path) -> dict:
         return {}
 
 
+_WARNED_RESOLVER_ERRORS: set[str] = set()
+
+
+def _is_missing_optional_resolver(exc: BaseException, scripts_dir: Path) -> bool:
+    return (
+        isinstance(exc, ModuleNotFoundError)
+        and exc.name in {"common", "common.active_task"}
+        and not (scripts_dir / "common" / "active_task.py").exists()
+        and not (scripts_dir / "common" / "active_task").exists()
+    )
+
+
+def _warn_resolver_failure(stage: str, exc: BaseException) -> None:
+    detail = " ".join(str(exc).split())
+    suffix = f": {detail}" if detail else ""
+    msg = f"[statusline] active-task {stage} failed ({type(exc).__name__}{suffix})"[:240]
+    if msg not in _WARNED_RESOLVER_ERRORS:
+        _WARNED_RESOLVER_ERRORS.add(msg)
+        print(msg, file=sys.stderr)
+
+
 def _resolve_task_dir(trellis_dir: Path, task_ref: str) -> Path | None:
     scripts_dir = trellis_dir / "scripts"
     if str(scripts_dir) not in sys.path:
         sys.path.insert(0, str(scripts_dir))
     try:
         from common.active_task import resolve_task_ref  # type: ignore[import-not-found]
-    except Exception:
+    except Exception as exc:
+        if not _is_missing_optional_resolver(exc, scripts_dir):
+            _warn_resolver_failure("import", exc)
         return None
-    return resolve_task_ref(task_ref, trellis_dir.parent)
+    try:
+        return resolve_task_ref(task_ref, trellis_dir.parent)
+    except Exception as exc:
+        _warn_resolver_failure("resolve-dir", exc)
+        return None
 
 
 def _find_trellis_dir() -> Path | None:
@@ -81,10 +108,16 @@ def _get_current_task_for_input(trellis_dir: Path, cc_data: dict) -> dict | None
         sys.path.insert(0, str(scripts_dir))
     try:
         from common.active_task import resolve_active_task  # type: ignore[import-not-found]
-    except Exception:
+    except Exception as exc:
+        if not _is_missing_optional_resolver(exc, scripts_dir):
+            _warn_resolver_failure("import", exc)
         return None
 
-    active = resolve_active_task(trellis_dir.parent, cc_data, platform="claude")
+    try:
+        active = resolve_active_task(trellis_dir.parent, cc_data, platform="claude")
+    except Exception as exc:
+        _warn_resolver_failure("resolve", exc)
+        return None
     if active.stale:
         title = Path(active.task_path).name if active.task_path else "stale task"
         return {

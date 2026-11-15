@@ -1,6 +1,6 @@
 # FreshPowder engineering contracts
 
-FreshPowder is a ski and snowboard deal system with three surfaces: the primary `aggregator/` FastAPI application, the secondary `snow_deals/` CLI, and `tampermonkey/` userscript.
+FreshPowder lives under `catalogs/fresh-powder/` within the consolidated Deal Aggregator workspace (`common/deal_common/` owns shared category-independent code, alongside sibling catalogs under `catalogs/`). FreshPowder has three surfaces: the primary `catalogs/fresh-powder/src/aggregator/` FastAPI application, the secondary `catalogs/fresh-powder/src/snow_deals/` CLI, and the `catalogs/fresh-powder/tampermonkey/` userscript.
 
 Read these specifications before changing the corresponding area:
 
@@ -9,4 +9,4 @@ Read these specifications before changing the corresponding area:
 - [Web, auth, and deployment contracts](web-auth-and-deployment.md)
 - [Verification](verification.md)
 
-`PLAN.md` and `aggregator/PLANS.md` are retained product planning/history records, not Trellis runtime files.
+`catalogs/fresh-powder/PLAN.md` and `catalogs/fresh-powder/history/aggregator/PLANS.md` are retained historical product planning records (distinct from active source code under `catalogs/fresh-powder/src/` and workspace tracking in root `PLANS.md`), not Trellis runtime files.
