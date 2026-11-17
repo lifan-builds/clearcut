@@ -8,8 +8,7 @@ Find deeply discounted ski and snowboard gear across specialist retailers, ranke
 
 ## Ownership
 
-- `src/aggregator/`: snow taxonomy, retailer registry, model/brand rules, exclusion rules, browser/store adapters, review matching, database queries, auth, and FastAPI/Jinja2/htmx UI.
-- `src/snow_deals/`: existing secondary CLI and BlueZone parser. Shared parser/model imports are retained as compatibility shims.
+- `src/aggregator/`: snow taxonomy, retailer registry, model/brand rules, exclusion rules, browser/store adapters (including BlueZone), review matching, database queries, auth, and FastAPI/Jinja2/htmx UI.
 - `tests/`: category and app regression tests.
 - `deploy/`: Dockerfile and Render startup script.
 - `tampermonkey/`: existing userscript.
@@ -28,7 +27,7 @@ Run from the workspace root, not this directory:
 PUBLIC_MODE=1 .venv/bin/uvicorn aggregator.web.app:create_app --factory --reload
 ```
 
-The root installation supplies both `snow-deals` and `snow-deals-agg`. Existing Python imports (`aggregator.*`, `snow_deals.*`) are retained. Do not install the archived `history/aggregator/pyproject.toml`.
+The root installation supplies `deal_common`, `aggregator`, and `snow-deals-agg`. Do not install the archived `history/aggregator/pyproject.toml`.
 
 ## Data and deployment
 

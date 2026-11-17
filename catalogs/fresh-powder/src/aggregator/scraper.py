@@ -48,7 +48,7 @@ def _get_semaphore(domain: str) -> asyncio.Semaphore:
 _PARSER_REGISTRY: dict[str, tuple[str, str]] = {
     "shopify":          ("deal_common.parsers.shopify", "ShopifyParser"),
     "skiessentials":    ("deal_common.parsers.skiessentials", "SkiEssentialsParser"),
-    "bluezone":         ("snow_deals.parsers.bluezone", "BlueZoneParser"),
+    "bluezone":         ("aggregator.parsers.bluezone", "BlueZoneParser"),
     "alpineshopvt":     ("aggregator.parsers.alpineshopvt", "AlpineShopVTParser"),
     "thecircle":        ("deal_common.parsers.thecircle", "TheCircleParser"),
     "coloradodiscount": ("aggregator.parsers.coloradodiscount", "ColoradoDiscountParser"),

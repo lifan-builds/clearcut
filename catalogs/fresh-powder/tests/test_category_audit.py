@@ -10,7 +10,7 @@ from aggregator.categorizer import categorize, exclusion_reason
 from aggregator.db import get_brands, get_category_counts, init_db, query_deals, upsert_deals
 from aggregator.models import AggregatedDeal
 from aggregator.scraper import _products_to_deals
-from snow_deals.parsers.shopify import ShopifyParser, product_type_from_item
+from deal_common.parsers.shopify import ShopifyParser, product_type_from_item
 
 
 @pytest.mark.parametrize(('name', 'product_type', 'expected'), [
@@ -153,7 +153,7 @@ def test_offline_audit_requires_matching_title_and_preserves_source(tmp_path):
 
 
 def test_snapshot_repair_does_not_import_scraping_package(tmp_path):
-    """Vercel build imports only aggregator; no editable snow_deals installation."""
+    """Vercel build imports only aggregator DB helpers; no scraper or HTML parsers."""
     import subprocess
     import sys
     from pathlib import Path
@@ -164,7 +164,7 @@ from pathlib import Path
 sys.path.insert(0, sys.argv[1])
 class NoScraper(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname == 'snow_deals' or fullname.startswith('snow_deals.'):
+        if fullname in {'aggregator.scraper', 'aggregator.browser'} or fullname.startswith(('aggregator.parsers', 'deal_common.parsers')):
             raise ImportError('scraping package is unavailable in build context')
 sys.meta_path.insert(0, NoScraper())
 from aggregator.db import init_db, repair_deal_categories

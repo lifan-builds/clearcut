@@ -10,7 +10,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from aggregator.auth_db import alert_signup_db as signup_db, _sync
-from aggregator.web.rate_limit import SlidingWindowRateLimiter, client_key
+from deal_common.rate_limit import SlidingWindowRateLimiter, client_key
 from aggregator.web.seo import page_context
 
 signup_router = APIRouter()

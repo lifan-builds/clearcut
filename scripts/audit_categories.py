@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'common'), str(ROOT / 'catalogs/fresh-powder/src')]
 from aggregator.db import init_db, repair_deal_categories
 from aggregator.reviews import _normalize_brand, compute_and_store_deal_reviews
-from snow_deals.parsers.shopify import product_type_from_item
+from deal_common.parsers.shopify import product_type_from_item
 
 
 def audit(source: Path, destination: Path, metadata: dict, report_dir: Path) -> dict:

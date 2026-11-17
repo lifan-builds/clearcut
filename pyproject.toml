@@ -32,14 +32,13 @@ dev = [
 ]
 
 [project.scripts]
-snow-deals = "snow_deals.cli:cli"
 snow-deals-agg = "aggregator.cli:cli"
 cycling-deals = "cycling_deals.cli:cli"
 tool-deals = "tool_deals.cli:cli"
 
 [tool.setuptools.packages.find]
 where = ["common", "catalogs/fresh-powder/src", "catalogs/cycling/src", "catalogs/tools/src"]
-include = ["deal_common*", "aggregator*", "snow_deals*", "cycling_deals*", "tool_deals*"]
+include = ["deal_common*", "aggregator*", "cycling_deals*", "tool_deals*"]
 
 [tool.setuptools.package-data]
 "aggregator" = ["comparison_catalog.json"]

@@ -4,7 +4,7 @@ from datetime import datetime
 
 from aggregator.config import StoreConfig
 from aggregator.scraper import build_scrape_report, _is_kids_product, _products_to_deals
-from snow_deals.models import Product
+from deal_common.models import Product
 
 
 def test_kids_filter():

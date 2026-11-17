@@ -8,12 +8,12 @@ import pytest
 from aggregator.browser import _parse_raw_products
 from aggregator.categorizer import categorize, exclusion_reason, is_excluded
 from aggregator.config import StoreConfig
+from aggregator.parsers.bluezone import BlueZoneParser
 from aggregator.parsers.coloradodiscount import ColoradoDiscountParser
 from aggregator.parsers.sacredride import SacredRideParser
 from aggregator.scraper import _products_to_deals, build_scrape_report, protect_partial_snapshots, scrape_store
-from snow_deals.models import Product
-from snow_deals.parsers.bluezone import BlueZoneParser
-from snow_deals.parsers.shopify import ShopifyParser
+from deal_common.models import Product
+from deal_common.parsers.shopify import ShopifyParser
 
 
 @pytest.mark.parametrize(("name", "expected"), [
@@ -397,7 +397,7 @@ def test_manual_page_offsets_do_not_trigger_auto_pagination():
 
 
 def test_brand_recovery_preserves_numeric_and_multiword_brands():
-    from aggregator.parsers.common import prefix_brand_from_url
+    from deal_common.parsers.common import prefix_brand_from_url
     assert prefix_brand_from_url('686 GORE-TEX Core Pant', 'https://s.test/686-gore-tex-core-pant') == '686 GORE-TEX Core Pant'
     assert prefix_brand_from_url('Sogn Bib Pant', 'https://s.test/helly-hansen-sogn-bib-pant') == 'Helly Hansen Sogn Bib Pant'
     assert prefix_brand_from_url('Knit Top', 'https://s.test/cashmere-knit-top') == 'Knit Top'

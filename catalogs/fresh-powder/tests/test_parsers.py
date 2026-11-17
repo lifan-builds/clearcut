@@ -2,7 +2,7 @@
 
 from aggregator.parsers.alpineshopvt import AlpineShopVTParser
 from aggregator.parsers.coloradodiscount import ColoradoDiscountParser
-from snow_deals.parsers.shopify import ShopifyParser
+from deal_common.parsers.shopify import ShopifyParser
 from aggregator.parsers.sacredride import SacredRideParser
 
 

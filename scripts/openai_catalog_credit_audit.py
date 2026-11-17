@@ -230,23 +230,17 @@ def load_supplemental_raw_feeds() -> dict[str, dict]:
 
     for prefix, suffix, path in SUPPLEMENTAL_SHOPIFY_FEEDS:
         if path.exists():
-            try:
-                data = json.loads(path.read_text())
-                if isinstance(data, dict) and isinstance(data.get("products"), list):
-                    ingest_items(data["products"], prefix, suffix)
-            except Exception:
-                pass
+            data = json.loads(path.read_text())
+            if isinstance(data, dict) and isinstance(data.get("products"), list):
+                ingest_items(data["products"], prefix, suffix)
 
     if NEW_SOURCE_FEEDS_PATH.exists():
-        try:
-            feeds = json.loads(NEW_SOURCE_FEEDS_PATH.read_text())
-            if isinstance(feeds, dict):
-                for key, (prefix, suffix) in NEW_SOURCE_ORIGINS.items():
-                    feed = feeds.get(key)
-                    if isinstance(feed, dict) and isinstance(feed.get("products"), list):
-                        ingest_items(feed["products"], prefix, suffix)
-        except Exception:
-            pass
+        feeds = json.loads(NEW_SOURCE_FEEDS_PATH.read_text())
+        if isinstance(feeds, dict):
+            for key, (prefix, suffix) in NEW_SOURCE_ORIGINS.items():
+                feed = feeds.get(key)
+                if isinstance(feed, dict) and isinstance(feed.get("products"), list):
+                    ingest_items(feed["products"], prefix, suffix)
 
     return by_url
 
@@ -657,6 +651,25 @@ def extract_assistant_text_from_response_body(body: dict) -> str:
     return ""
 
 
+def summarize_offer_record(offer: dict) -> dict:
+    return {
+        "id": offer["id"],
+        "store": offer["store"],
+        "currency": offer["currency"],
+        "name": offer["name"],
+        "brand": offer["brand"],
+        "url": offer["url"],
+        "current_price": offer["current_price"],
+        "original_price": offer["original_price"],
+        "discount_pct": offer["discount_pct"],
+        "category": offer["category"],
+        "sizes": offer["sizes"],
+        "variant_offer_count": offer["variant_offer_count"],
+        "variant_price_spread": offer["variant_price_spread"],
+        "stratum": offer["stratum"],
+    }
+
+
 def audit_single_offer_live(
     offer: dict,
     *,
@@ -702,22 +715,7 @@ def audit_single_offer_live(
                 return {
                     "ok": True,
                     "custom_id": f"offer-{offer['id']}",
-                    "offer": {
-                        "id": offer["id"],
-                        "store": offer["store"],
-                        "currency": offer["currency"],
-                        "name": offer["name"],
-                        "brand": offer["brand"],
-                        "url": offer["url"],
-                        "current_price": offer["current_price"],
-                        "original_price": offer["original_price"],
-                        "discount_pct": offer["discount_pct"],
-                        "category": offer["category"],
-                        "sizes": offer["sizes"],
-                        "variant_offer_count": offer["variant_offer_count"],
-                        "variant_price_spread": offer["variant_price_spread"],
-                        "stratum": offer["stratum"],
-                    },
+                    "offer": summarize_offer_record(offer),
                     "audit": audit,
                     "gateway": {
                         "account_id": acct_id,
@@ -1012,22 +1010,7 @@ def cmd_batch_submit(args: argparse.Namespace) -> int:
             fh.write(json.dumps(line, ensure_ascii=False) + "\n")
 
     manifest_by_custom_id = {
-        f"offer-{o['id']}": {
-            "id": o["id"],
-            "store": o["store"],
-            "currency": o["currency"],
-            "name": o["name"],
-            "brand": o["brand"],
-            "url": o["url"],
-            "current_price": o["current_price"],
-            "original_price": o["original_price"],
-            "discount_pct": o["discount_pct"],
-            "category": o["category"],
-            "sizes": o["sizes"],
-            "variant_offer_count": o["variant_offer_count"],
-            "variant_price_spread": o["variant_price_spread"],
-            "stratum": o["stratum"],
-        }
+        f"offer-{o['id']}": summarize_offer_record(o)
         for o in slice_offers
     }
     manifest_path.write_text(json.dumps(manifest_by_custom_id, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -1130,14 +1113,11 @@ def cmd_batch_status(args: argparse.Namespace) -> int:
         receipt_path.write_text(json.dumps(receipt_data, indent=2, ensure_ascii=False), encoding="utf-8")
         latest = receipt_path.parent / "latest-batch.json"
         if latest.exists():
-            try:
-                latest_data = json.loads(latest.read_text(encoding="utf-8"))
-                if latest_data.get("batch_id") == batch_id:
-                    latest.write_text(
-                        json.dumps(receipt_data, indent=2, ensure_ascii=False), encoding="utf-8"
-                    )
-            except Exception:
-                pass
+            latest_data = json.loads(latest.read_text(encoding="utf-8"))
+            if latest_data.get("batch_id") == batch_id:
+                latest.write_text(
+                    json.dumps(receipt_data, indent=2, ensure_ascii=False), encoding="utf-8"
+                )
 
     print(
         json.dumps(

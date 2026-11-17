@@ -7,8 +7,8 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup, Tag
 
 from deal_common.models import Product
-from deal_common.parsers.common import parse_price as _parse_price
 from deal_common.parsers.base import BaseParser
+from deal_common.parsers.common import parse_price as _parse_price
 
 log = logging.getLogger(__name__)
 
@@ -31,7 +31,6 @@ class BlueZoneParser(BaseParser):
     def get_next_page_url(self, html: str, current_url: str) -> str | None:
         soup = BeautifulSoup(html, "lxml")
 
-        # BlueZone uses aria-label="Next" on pagination links
         next_link = soup.select_one(
             'a[aria-label="Next"], '
             'a[rel="next"], '
@@ -53,7 +52,6 @@ class BlueZoneParser(BaseParser):
         return None
 
     def _find_product_cards(self, soup: BeautifulSoup) -> list[Tag]:
-        # BlueZone uses .card.product-card
         cards = soup.select(".card.product-card")
         if cards:
             return cards
@@ -100,12 +98,10 @@ class BlueZoneParser(BaseParser):
         current_price: float | None = None
         original_price: float | None = None
 
-        # Current (sale) price is in .text-accent span
         accent = price_el.select_one(".text-accent")
         if accent:
             current_price = _parse_price(accent.get_text())
 
-        # Original price is in <del> tag
         del_el = price_el.select_one("del")
         if del_el:
             original_price = _parse_price(del_el.get_text())
@@ -113,7 +109,6 @@ class BlueZoneParser(BaseParser):
         if current_price is not None:
             return current_price, original_price
 
-        # Fallback: grab any price-like text
         all_prices = []
         for text_node in price_el.find_all(string=re.compile(r"\$[\d,]+\.?\d*")):
             p = _parse_price(text_node)

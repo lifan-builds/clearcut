@@ -11,7 +11,7 @@ from aggregator.db import init_db, upsert_deals, query_deals
 from aggregator.models import AggregatedDeal
 from aggregator.scraper import fetch_listing, scrape_store
 from aggregator.config import StoreConfig
-from snow_deals.parsers.shopify import ShopifyParser
+from deal_common.parsers.shopify import ShopifyParser
 
 
 def test_shopify_price_and_sizes_belong_to_same_available_offer():
@@ -103,7 +103,7 @@ def test_excludes_false_deals_and_recovers_numeric_lengths():
     from aggregator.scraper import _products_to_deals, _is_kids_product
     from aggregator.categorizer import categorize, is_excluded
     from aggregator.reviews import _extract_brand
-    from snow_deals.models import Product
+    from deal_common.models import Product
     for name in ["Tailgating Grill & Chill Bundle", "Icon Skirt Western Yoke", "Women's Unreality Dress", "Sunbeam Outdoor Steel Fire Pit"]:
         assert is_excluded(name)
         assert categorize(name) is None

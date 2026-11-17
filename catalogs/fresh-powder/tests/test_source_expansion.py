@@ -10,7 +10,7 @@ import pytest
 from aggregator.config import StoreConfig
 from aggregator.categorizer import categorize
 from aggregator.scraper import _products_to_deals, scrape_store, _clean_sizes, _extract_lengths
-from snow_deals.parsers.shopify import ShopifyParser
+from deal_common.parsers.shopify import ShopifyParser
 
 FEEDS = json.loads((Path(__file__).parent / 'fixtures/new_source_feeds.json').read_text())
 
