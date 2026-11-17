@@ -36,7 +36,6 @@ The eight root-applicable files are:
 - `common/tests/fixtures/thecircle/kader-inch.html`
 - `common/tests/fixtures/thecircle/kader-inch.json`
 - `docs/project-guidance/aggregator-data-and-parsers.md`
-- `.trellis/spec/deal/aggregator-data-and-parsers.md`
 
 Both reduced fixtures retain functional public identity/options/money/stock/image
 facts, omitting unrelated scripts and descriptions. The 45 new cases cover valid

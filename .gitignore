@@ -28,15 +28,6 @@ Thumbs.db
 .env.*
 cookies.json
 public/static/
-.local/catalog-preview/
-.local/source-expansion/
+.local/
 
-# Claude Code
-.claude/settings.local.json
-.claude/skills/project-init-iterate/
-CLAUDE.md
-
-# MCP / Playwright
-.mcp.json
-.playwright-mcp/
 .vercel

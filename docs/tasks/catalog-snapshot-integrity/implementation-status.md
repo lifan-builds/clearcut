@@ -7,7 +7,7 @@ and strict sha256 digest before destination setup or download. Stream-count and
 hash all bytes, then require exact metadata agreement before SQLite is opened.
 
 Owned paths: scripts/restore_catalog.py, common/tests/test_catalog_restore.py,
-the web/deployment contract and its Trellis mirror, and this status. No URL,
+the web/deployment contract, and this status. No URL,
 authentication scope, retry, budget, bootstrap authorization, runtime/source,
 schema or deployment change. Other agents' Circle/root edits stay untouched.
 
@@ -30,7 +30,7 @@ root owns retained/live reproduction, asset verification and publication.
   token scope, metadata redirect refusal, overwrite refusal and no-retry behavior
   are unchanged.
 - Append the exact-byte restore contract to both
-  `docs/project-guidance/web-auth-and-deployment.md` and its Trellis mirror.
+  `docs/project-guidance/web-auth-and-deployment.md`.
 - Expand only `common/tests/test_catalog_restore.py`, using valid synthetic
   temporary snapshots and mocked HTTP. No downloaded/public DB bytes were read
   by the implementer.

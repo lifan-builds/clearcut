@@ -2,7 +2,7 @@
 
 Added source-bound machine recognition in `catalogs/tools/src/tool_deals/catalog.py`. Only exact HTTPS `www.weldingsuppliesfromioc.com/products/` URLs can use the observed Welding/Cutting types and exact machine taxonomy. Existing title, component, condition and accessory-type guards run first. Accessories, parts and consumables taxonomy override positive machine parents, including the observed Plasma Accessories descendant. Generic Welding/Cutting types and slash tags on other origins remain insufficient.
 
-The regression fixture retains six observed merchant records: both deep ESAB candidates, a stick welder, an engine-drive welder/generator, a plasma cutter and the actual plasma interface cable. Thirty-eight focused cases cover the observed positive types/tags, exact origin/path boundary, insufficient metadata, conditions/components/negative descendants, included torch semantics, no inferred kit/platform, full parser/normalization/query fact preservation, percentage ordering and unknown-stock exclusion. The contract is mirrored in project guidance and Trellis specification.
+The regression fixture retains six observed merchant records: both deep ESAB candidates, a stick welder, an engine-drive welder/generator, a plasma cutter and the actual plasma interface cable. Thirty-eight focused cases cover the observed positive types/tags, exact origin/path boundary, insufficient metadata, conditions/components/negative descendants, included torch semantics, no inferred kit/platform, full parser/normalization/query fact preservation, percentage ordering and unknown-stock exclusion. The contract is mirrored in project guidance.
 
 ## Controlled replay
 

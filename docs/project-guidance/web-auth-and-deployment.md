@@ -18,33 +18,9 @@ The snow build packages the validated database as deterministic gzip plus an ori
 
 ## Shared catalog size facets
 
-### Scope / trigger
+Cycling and tools size menus must not repeat labels that `size_key` already treats as equivalent (presentation only; Fresh Powder uses its own web app). `query(sources, filters, *, now=None)` retains `facets["size"]: list[str]`, and `GET /?size=<label>` continues accepting original retailer labels and saved-search URLs.
 
-Cycling and tools size menus must not repeat labels which the existing `size_key` matcher already treats as equivalent. This is presentation only; it does not infer fit or expand size equivalence. Fresh Powder uses a separate web app.
-
-### Signatures
-
-`query(sources, filters, *, now=None)` retains `facets["size"]: list[str]`; `GET /?size=<label>` continues accepting original retailer labels and existing saved-search URLs.
-
-### Contracts
-
-Group only existing fresh, reported-in-stock facet labels by `size_key`. Select an existing label deterministically by length, case-folded spelling, then original spelling. After querying, resolve a known incoming alias to its representative for form selection, filter display and generated links. Preserve raw selected offer size/options/stock/price/reference/URL and all persisted observations.
-
-### Validation and error behavior
-
-Unknown requested labels remain selected, escaped and visible with the existing empty result. Unknown-stock, stale and future source labels cannot introduce facet entries. Compound labels and numeric-s sizes remain distinct unless `size_key` already equates them.
-
-### Good / base / bad cases
-
-M/MD/Medium collapse to one existing menu label and match the same offers. A unique model-size identifier stays unchanged. M/L must not become M; 50s must not become 50; a shorter menu must never discard matching offers.
-
-### Required tests
-
-Assert source-order-independent representatives, legacy and unknown selected form state, generated pagination links, escaped unknown values, preserved raw offers, ordering/counts/pagination, and fresh/stock facet membership. Replay explicit public snapshots read-only when assessing a release.
-
-### Wrong versus correct
-
-Wrong: rewrite stored merchant sizes to simplify the menu or deduplicate cards using display labels. Correct: deduplicate facet strings using existing matching semantics, while cards and history retain the exact merchant variant.
+Group only fresh, reported-in-stock facet labels by `size_key`, picking an existing representative deterministically by length, case-folded spelling, then original spelling (e.g., `M`/`MD`/`Medium` collapse to one menu label while `M/L` and `50s` remain distinct unless `size_key` equates them). Resolve known incoming aliases to their representative for form selection, filter chips, and pagination links while preserving raw selected-offer fields and persisted observations. Unknown requested labels stay selected, escaped, and visible with an empty result; unknown-stock, stale, or future rows never add facet entries.
 
 ## Catalog release asset integrity
 

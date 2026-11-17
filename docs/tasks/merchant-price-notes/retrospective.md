@@ -10,7 +10,7 @@ The retained 01:32 UTC capture contains BMC Fourstroke R 01 ONE 2026 with all fo
 
 ## Prevention
 
-For every explained population delta, join exact product handle and variant ID to the dated raw input before attributing the cause. Distinguish missing raw membership, unavailable variants, absent/invalid markdown, catalog exclusion, incomplete source refresh, and current-query filtering. If raw evidence is unavailable, describe only the observed normalized-result change. The parser contract and Trellis mirror now require this check.
+For every explained population delta, join exact product handle and variant ID to the dated raw input before attributing the cause. Distinguish missing raw membership, unavailable variants, absent/invalid markdown, catalog exclusion, incomplete source refresh, and current-query filtering. If raw evidence is unavailable, describe only the observed normalized-result change. The parser contract now require this check.
 
 No stock-change time or dead-offer-removal speed is inferred from the interval between observations. Likewise, an older missing pricing note means none was recorded; it is not proof the merchant caveat was absent. The new history explanation makes that limitation explicit, and regression tests prevent copying current notes backward.
 

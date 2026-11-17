@@ -6,7 +6,7 @@ Reviewed the full task scope: helper, workflow wiring, runtime tests, requiremen
 
 - `catalogs/fresh-powder/tests/test_refresh_runtime.py`: two unfinished expectations treated Evo as browser-based and failed. Evo is configured for HTTP. Corrected the expectation, selected actual browser retailer Backcountry for browser/mixed tests, and covered every configured store plus malformed input and stdout output. All 52 focused cases pass.
 - `scripts/snow_refresh_runtime.py`: normalized the multiline `any` expression for readability; behavior is unchanged.
-- Mirrored the dependency setup contract in the project guidance and Trellis deployment specification.
+- Mirrored the dependency setup contract in the project guidance.
 
 ## Findings not fixed
 

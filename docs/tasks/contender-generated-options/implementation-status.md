@@ -7,7 +7,7 @@ construction and reuse it for independent audit rejection. No stripping, alias
 mapping, price/stock transfer, generic size normalization or history rewrite.
 
 Owned changes: shared Shopify parser, catalog audit, focused factual regression
-fixtures/tests, parser contract and Trellis mirror, plus this implementation
+fixtures/tests, parser contract, plus this implementation
 record. Root owns full source capture/replay, refresh/admission and publication.
 No network, operational DB, source configuration, commit or deployment actions;
 Circle/root work remains untouched.
@@ -38,7 +38,7 @@ Runtime files have remained unchanged since root started its live merchant audit
   foreign-host isolation, ordinary MWS words, every variant marker field and
   independent generated-old-offer rejection with ordinary audit preservation.
 - Append the source-specific parser/audit contract to
-  `docs/project-guidance/aggregator-data-and-parsers.md` and its Trellis mirror.
+  `docs/project-guidance/aggregator-data-and-parsers.md`.
 
 ## Verification
 

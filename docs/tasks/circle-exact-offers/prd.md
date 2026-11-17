@@ -1,6 +1,6 @@
 # Complete Circle discovery and exact snow offers
 
-Status: in progress under the active competitive-improvement goal and standing comparable-release authorization. Trellis identity is uninitialized; task artifacts hold the execution record.
+Status: in progress under the active competitive-improvement goal and standing comparable-release authorization.
 
 Fresh Powder's Circle Whistler listings lack exact selected variants, confirmed stock and some images. Public merchant research identifies an in-stock Matte Black/XL Jackson helmet (100724076), an unavailable L (100724075), and a stable exact-selection URL. Clicking unavailable L leaves XL selected. A visible dropdown is therefore not stock evidence. The explicit browser pagination selector misses `.pager li.next a`, but its generic numbered-link fallback supports the observed URLs; this alone is not evidence of truncated current coverage. Both configured collections advertise eighteen pages, which the candidate must reconcile.
 
