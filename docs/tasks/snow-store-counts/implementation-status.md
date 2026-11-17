@@ -1,6 +1,6 @@
 # Implementation result
 
-Implemented in separate worktree `/Users/lfan/.codex/worktrees/snow-store-counts/fresh-powder`, branch `codex/snow-store-counts`, baseline3043f75. No commit or publication.
+Implemented in separate worktree `snow-store-counts/fresh-powder`, branch `codex/snow-store-counts`, baseline3043f75. No commit or publication.
 
 The concrete HTTP regression failed before the change: a retailer with one visible equipment listing displayed `Evo (3)` because its source batch also contained clothing and an excluded child product. It now displays one for equipment and two with clothing. A grouped mode in the existing deal query shares selected-offer and eligibility clauses, ignores only the retailer facet, and executes one grouped SQL query before pagination. Store health retains its ingestion meaning.
 

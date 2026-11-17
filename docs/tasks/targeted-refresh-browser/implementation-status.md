@@ -1,6 +1,6 @@
 # Implementation result
 
-Implemented in `/Users/lfan/.codex/worktrees/targeted-refresh-browser/fresh-powder`, branch `codex/targeted-refresh-browser`, based on `3043f75`. No commit, push, workflow dispatch, cancellation or deployment was performed by this reviewer.
+Implemented in isolated worktree `targeted-refresh-browser/fresh-powder`, branch `codex/targeted-refresh-browser`, based on `3043f75`. No commit, push, workflow dispatch, cancellation or deployment was performed by this reviewer.
 
 The Circle-only production refresh spent time installing Chromium system fonts although Circle now uses HTTP. The workflow now runs `scripts/snow_refresh_runtime.py` before browser installation. The helper reads the actual `STORES` registry and emits `browser_required=false` only for an explicit selection made entirely of known HTTP retailers. Full/scheduled, unknown, malformed and mixed/browser selections retain installation. Workflow input stays in `REFRESH_STORES`; existing Bash parsing, Click choices, scraper settings, review schedule, source/history guards and publication steps are unchanged.
 

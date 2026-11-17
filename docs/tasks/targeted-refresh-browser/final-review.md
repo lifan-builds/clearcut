@@ -14,7 +14,7 @@ None. No scope, product, interface or boundary decision is outstanding in this c
 
 ## Verification
 
-- Full safe offline suite: **1505 passed**, eight existing warnings, using `/Users/lfan/Project/fresh-powder/.venv/bin/python scripts/check.py -q`.
+- Full safe offline suite: **1505 passed**, eight existing warnings, using `.venv/bin/python scripts/check.py -q`.
 - Focused runtime suite: **52 passed** through the safe check wrapper.
 - Lint: **pass** with the repository's pinned Ruff over the exact current CI scope and both new Python files.
 - Type checking: **not configured**. Changed Python AST parsing passes.

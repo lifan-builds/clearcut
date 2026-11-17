@@ -29,7 +29,7 @@ Counts are from the dated [inventory check](inventory-check.json), not a promise
 
 ## Reproduce
 
-Install once from root with `pip install -e '.[dev]'`. See each catalog README for refresh and serve commands. In this checkout, the existing environment at `/Users/lfan/Project/fresh-powder/.venv/bin/python` is used with `PYTHONPATH=common:catalogs/cycling/src:catalogs/tools/src` for previews; existing dependencies and operational databases were not relocated.
+Install once from root with `pip install -e '.[dev]'`. See each catalog README for refresh and serve commands. In a local checkout, `.venv/bin/python` is used with `PYTHONPATH=common:catalogs/cycling/src:catalogs/tools/src` for previews; existing dependencies and operational databases were not relocated.
 
 Task-owned local data, screenshots and standalone builds are in `.local/catalog-preview/`, excluded from Git. Latest prepared bundles are `bigring-final/` and `benchdrop-final/` inside that directory. To prepare a separate deploy directory:
 
