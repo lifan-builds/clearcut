@@ -4,6 +4,9 @@ Find exceptional discounts on expensive products across specialist retailers. Br
 
 Fresh Powder is the first catalog: ski and snowboard gear. The reusable ingestion code lives in `common/`; each catalog owns its product rules, retailer selection, identity, and customer experience.
 
+- **FreshPowder Live Deals:** [https://freshpowder.clifan.com/](https://freshpowder.clifan.com/)
+- **Overview & Walkthrough:** [https://clifan.com/freshpowder/](https://clifan.com/freshpowder/)
+
 ## Layout
 
 ```text
@@ -52,7 +55,7 @@ The web command starts the Fresh Powder app with public local access and a new, 
 
 ## Migration notes
 
-The repository is now the Deal Aggregator workspace. This active checkout retains the physical path `/Users/lfan/Project/fresh-powder`; no parent directory, Git remote, cloud project, or existing worktree was renamed.
+The repository is now the Deal Aggregator workspace. This active checkout retains its existing local directory; no parent directory, Git remote, cloud project, or existing worktree was renamed.
 
 Old ignored databases, credentials, deployment state, browser state, and installed dependencies were left in place. Legacy directories may therefore remain locally even though tracked source moved. Reinstall with the root command above. To use an existing local database, explicitly set `DATABASE_PATH` and `AUTH_DB_PATH` to its existing absolute path; migration does not discover or copy it automatically.
 
@@ -73,3 +76,7 @@ The [source follow-up](docs/tasks/source-expansion/SATURATION.md) extends Fresh 
 The separate [Taylor adapter follow-up](docs/tasks/taylor-source/IMPLEMENTATION.md) brings tools to ten retailers, 352 qualifying listings and 22 deep deals. It adds bounded product-detail discovery to common ingestion while keeping source-specific SKU/option rules in the parser. At that checkpoint, release `7798318` was the nine-source publication candidate and the follow-up was local work beyond its approval scope.
 
 The [Fasteners follow-up](docs/tasks/fasteners-source/IMPLEMENTATION.md) further expands tools to 11 retailers, 409 qualifying listings and 26 deep deals from six retailers. It reuses the existing Shopify pipeline after verifying the merchant’s current storefront redirects and prices. All 445 offline tests and both 30-offer merchant samples passed. At that checkpoint, this follow-up was local and outside release `7798318`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
