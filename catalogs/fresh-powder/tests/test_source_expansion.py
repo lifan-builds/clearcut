@@ -7,12 +7,41 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 
-from aggregator.config import StoreConfig
+from aggregator.config import STORES, StoreConfig
 from aggregator.categorizer import categorize
 from aggregator.scraper import _products_to_deals, scrape_store, _clean_sizes, _extract_lengths
 from deal_common.parsers.shopify import ShopifyParser
 
 FEEDS = json.loads((Path(__file__).parent / 'fixtures/new_source_feeds.json').read_text())
+
+
+def test_fresh_skis_refresh_uses_nonempty_sale_collection_and_preserves_cad():
+    async def run():
+        def handler(request):
+            if request.url.path == '/collections/sale-skis/products.json':
+                return httpx.Response(200, json={'products': [{
+                    'title': 'Atomic Bent 100 Skis', 'handle': 'atomic-bent-100',
+                    'options': [{'name': 'Size'}],
+                    'variants': [{'id': 180, 'price': '400', 'compare_at_price': '800',
+                                  'available': True, 'option1': '180'}],
+                }]})
+            if request.url.path == '/collections/clearance/products.json':
+                return httpx.Response(200, json={'products': []})
+            raise AssertionError(f'Unexpected request: {request.url}')
+
+        store = next(store for store in STORES if store.name == 'Fresh Skis')
+        outcomes = {}
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            deals = await scrape_store(store, client, delay=0, outcomes=outcomes)
+        assert len(deals) == 1
+        deal = deals[0]
+        assert (deal.store, deal.currency, deal.current_price, deal.original_price) == (
+            'Fresh Skis', 'CAD', 400, 800,
+        )
+        assert deal.offers[0].url == 'https://www.freshskis.com/products/atomic-bent-100?variant=180'
+        assert outcomes['Fresh Skis']['errors'] == 0
+        assert outcomes['Fresh Skis']['collections'][0]['status'] == 'complete'
+    asyncio.run(run())
 
 
 def test_new_source_category_and_size_edge_cases():

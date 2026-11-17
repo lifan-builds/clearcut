@@ -3,6 +3,58 @@
 from aggregator.browser import STORE_CONFIGS, _parse_raw_products
 
 
+def test_backcountry_plain_prices_keep_pages_nonempty_without_inventing_deals():
+    import json
+    from pathlib import Path
+    import subprocess
+
+    from aggregator.scraper import _products_to_deals
+
+    fixture = json.loads((Path(__file__).parent / 'fixtures/backcountry_price_cards.json').read_text())
+    # Minimal DOM surface for the captured card fields; run the actual extractor.
+    setup = """
+    const cards = JSON.parse(process.argv[1]);
+    const document = {querySelectorAll: () => cards.map(card => ({
+        querySelector: selector => ({
+            'a.chakra-linkbox__overlay': {href: card.url},
+            '.price': {textContent: card.price},
+            '[data-id="title"]': {textContent: card.name},
+            '[data-id="brandName"]': {textContent: card.brand},
+            'img[data-id="image"]': {src: card.image, getAttribute: () => null},
+        })[selector] || null,
+        querySelectorAll: () => [],
+    }))};
+    """
+    extractor = STORE_CONFIGS['backcountry'][1]
+
+    def extract(cards):
+        result = subprocess.check_output(
+            ['node', '-e', setup + 'console.log(JSON.stringify((' + extractor + ')()));', json.dumps(cards)],
+            text=True,
+        )
+        return _parse_raw_products(json.loads(result), fixture['source'])
+
+    products = extract(fixture['cards'])
+    assert len(products) == 4
+    assert [p.current_price for p in products] == [1337.91, 999.95, 2629.89, 552.47]
+    assert [p.original_price for p in products] == [2229.85, None, None, None]
+    assert products[1].name == 'Black Diamond Impulse Ti 98 Skis - 2027'
+    assert products[1].image_url == 'https://content.backcountry.com/images/items/large/BLD/BLDZAAD/MIDBLU.jpg'
+    deals = _products_to_deals(products, 'Backcountry')
+    assert len(deals) == 1
+    assert deals[0].url == fixture['cards'][0]['url']
+
+    # A whole page without reference prices is valid inventory, not an extraction failure.
+    plain_products = extract(fixture['cards'][1:])
+    assert len(plain_products) == 3
+    assert _products_to_deals(plain_products, 'Backcountry') == []
+
+    # Synthetic malformed/whole-dollar cases supplement the captured decimal prices.
+    synthetic = [dict(fixture['cards'][1], price=price, url=f'https://www.backcountry.com/item-{i}')
+                 for i, price in enumerate(['$1,200', 'Original price: $1,200', 'Current price: unavailable', 'See price in cart'])]
+    assert [p.current_price for p in extract(synthetic)] == [1200]
+
+
 def test_all_expected_configs_exist():
     expected = {"backcountry", "thehouse", "bigcommerce",
                 "levelnine", "thecircle", "sacredride"}

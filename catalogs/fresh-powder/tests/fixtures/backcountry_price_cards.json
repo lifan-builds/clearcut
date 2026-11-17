@@ -1,0 +1,35 @@
+{
+  "source": "https://www.backcountry.com/rc/skis?page=10",
+  "observed_at_utc": "2026-11-17T03:18:54.803Z",
+  "scope": "Public product-card text only; no account details. Prices are dated parser fixtures, not current offers.",
+  "cards": [
+    {
+      "name": "W Impulse 104 Ti + Freeraider 14 + Hawx Prime 95 XTD - 2026",
+      "brand": "Black Diamond",
+      "url": "https://www.backcountry.com/black-diamond-w-impulse-104-ti-freeraider-14-hawx-prime-95-xtd-2026",
+      "price": "Current price: $1,337.91 Original price: $2,229.85",
+      "image": "//content.backcountry.com/images/items/large/BLD/BLDZADB/ONEBLKBLK.jpg"
+    },
+    {
+      "name": "Impulse Ti 98 Skis - 2027",
+      "brand": "Black Diamond",
+      "url": "https://www.backcountry.com/black-diamond-impulse-ti-98-skis-2027",
+      "price": "$999.95",
+      "image": "//content.backcountry.com/images/items/large/BLD/BLDZAAD/MIDBLU.jpg"
+    },
+    {
+      "name": "Helio Carbon Ski + Raider EVO Binding + Zero G Tour Pro Boot",
+      "brand": "Black Diamond",
+      "url": "https://www.backcountry.com/black-diamond-helio-carbon-ski-raider-evo-binding-zero-g-tour-pro-boot",
+      "price": "$2,629.89",
+      "image": "//content.backcountry.com/images/items/large/BLD/BLDZA93/ONCOBLDUOR.jpg"
+    },
+    {
+      "name": "ARV 112 Ski - 2027",
+      "brand": "Armada",
+      "url": "https://www.backcountry.com/armada-arv-112-ski-2026",
+      "price": "$552.47 - $849.95",
+      "image": "//content.backcountry.com/images/items/large/ARM/ARMN3FP/BLA.jpg"
+    }
+  ]
+}

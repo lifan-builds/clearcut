@@ -76,7 +76,7 @@ STORE_CONFIGS: dict[str, tuple[str, str, str | None]] = {
                 const pe = card.querySelector('.price');
                 if (!pe) return;
                 const priceText = pe.textContent;
-                const currentMatch = priceText.match(/Current price:\\s*\\$([\\d,]+\\.?\\d*)/);
+                const currentMatch = priceText.trim().match(/^(?:Current price:\\s*)?\\$([\\d,]+\\.?\\d*)/);
                 const origMatch = priceText.match(/Original price:\\s*\\$([\\d,]+\\.?\\d*)/);
                 const currentPrice = currentMatch ? parseFloat(currentMatch[1].replace(/,/g, '')) : null;
                 const originalPrice = origMatch ? parseFloat(origMatch[1].replace(/,/g, '')) : null;

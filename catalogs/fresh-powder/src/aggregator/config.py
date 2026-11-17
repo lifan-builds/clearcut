@@ -339,7 +339,7 @@ STORES: list[StoreConfig] = [
     StoreConfig(
         "Fresh Skis", "freshskis.com",
         scrape_urls=[
-            "https://www.freshskis.com/collections/clearance",
+            "https://www.freshskis.com/collections/sale-skis",
         ],
         parser_type="shopify",
         tax_free=True, currency="CAD",
