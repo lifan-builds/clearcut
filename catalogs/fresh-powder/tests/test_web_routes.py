@@ -435,6 +435,7 @@ def test_retailer_counts_follow_filters_and_refresh_with_htmx(isolated_app, monk
         response = client.get('/?store=Evo')
         assert response.status_code == 200
         select, labels = options(response)
+        assert select.get('id') == 'store-filter'
         assert labels['Evo'] == 'Evo (1)'
         assert labels['Backcountry'] == 'Backcountry (1)'
         assert select.select_one('option[selected]')['value'] == 'Evo'
