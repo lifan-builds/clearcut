@@ -1,6 +1,7 @@
 """Original buying explanations; no product-testing or live-price claims."""
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
+
 from aggregator.web.routes import templates
 from aggregator.web.seo import site_url
 

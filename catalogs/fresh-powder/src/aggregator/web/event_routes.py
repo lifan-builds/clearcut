@@ -2,29 +2,24 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import json
 import re
 import secrets
 from urllib.parse import urlsplit, urlunsplit
 
-from fastapi import APIRouter, Request, Query
+from deal_common.rate_limit import SlidingWindowRateLimiter, client_key
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from aggregator.auth import auth_redirect_path, require_invite
-from aggregator.auth_db import log_event, get_click_stats
-from deal_common.rate_limit import SlidingWindowRateLimiter, client_key
-
-TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+from aggregator.auth_db import get_click_stats, log_event
+from aggregator.web.seo import templates
 
 event_router = APIRouter()
 EVENT_POST_LIMIT = 120
 EVENT_POST_WINDOW_SECONDS = 60
 event_post_limiter = SlidingWindowRateLimiter(window_seconds=EVENT_POST_WINDOW_SECONDS)
-
 
 ANALYTICS_COOKIE = "fp_analytics"
 SOURCES = {"direct", "google", "bing", "x", "portfolio", "club", "youtube", "reddit", "other"}

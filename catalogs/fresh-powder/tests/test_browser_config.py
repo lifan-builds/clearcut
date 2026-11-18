@@ -5,8 +5,8 @@ from aggregator.browser import STORE_CONFIGS, _parse_raw_products
 
 def test_backcountry_plain_prices_keep_pages_nonempty_without_inventing_deals():
     import json
-    from pathlib import Path
     import subprocess
+    from pathlib import Path
 
     from aggregator.scraper import _products_to_deals
 
@@ -56,15 +56,15 @@ def test_backcountry_plain_prices_keep_pages_nonempty_without_inventing_deals():
 
 
 def test_all_expected_configs_exist():
-    expected = {"backcountry", "thehouse", "bigcommerce",
-                "levelnine", "thecircle", "sacredride"}
-    assert expected.issubset(set(STORE_CONFIGS.keys()))
+    from aggregator.config import STORES
+
+    active_browser_types = {store.parser_type for store in STORES if store.use_browser}
+    assert active_browser_types | {"bigcommerce"} == set(STORE_CONFIGS.keys())
 
 
 def test_aliases():
     assert STORE_CONFIGS["corbetts"] is STORE_CONFIGS["bigcommerce"]
     assert STORE_CONFIGS["peterglenn"] is STORE_CONFIGS["bigcommerce"]
-    assert STORE_CONFIGS["alpineshopvt"] is STORE_CONFIGS["bigcommerce"]
 
 
 def test_config_tuple_shape():

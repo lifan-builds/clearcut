@@ -28,6 +28,7 @@ Thumbs.db
 .env.*
 cookies.json
 public/static/
+media/
 .local/
 
 .vercel

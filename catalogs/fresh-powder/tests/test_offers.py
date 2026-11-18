@@ -1,26 +1,25 @@
 """End-to-end offer selection: real size, price, history, and pagination agree."""
 import asyncio
 import json
-from pathlib import Path
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from functools import partial
+from pathlib import Path
 
-from fastapi.testclient import TestClient
-
-from deal_common.parsers.shopify import ShopifyParser
-from aggregator.scraper import _products_to_deals, build_scrape_report
 from aggregator.config import StoreConfig
-from aggregator.db import init_db, upsert_deals, query_deals
+from aggregator.db import init_db, query_deals, upsert_deals
 from aggregator.models import AggregatedDeal
+from aggregator.scraper import _products_to_deals, build_scrape_report
 from aggregator.sizes import matches_length
+from deal_common.parsers.shopify import ShopifyParser
+from fastapi.testclient import TestClient
 
 
 def products(variants=None, handle='ski'):
     variants = variants if variants is not None else [
-        dict(id=11, price='200', compare_at_price='1000', available=True, option1='160', option2='Red'),
-        dict(id=12, price='400', compare_at_price='1000', available=True, option1='180', option2='Blue'),
-        dict(id=13, price='50', compare_at_price='1000', available=False, option1='170', option2='Red'),
-        dict(id=14, price='100', compare_at_price='1000', option1='175', option2='Red'),
+        {'id': 11, 'price': '200', 'compare_at_price': '1000', 'available': True, 'option1': '160', 'option2': 'Red'},
+        {'id': 12, 'price': '400', 'compare_at_price': '1000', 'available': True, 'option1': '180', 'option2': 'Blue'},
+        {'id': 13, 'price': '50', 'compare_at_price': '1000', 'available': False, 'option1': '170', 'option2': 'Red'},
+        {'id': 14, 'price': '100', 'compare_at_price': '1000', 'option1': '175', 'option2': 'Red'},
     ]
     return ShopifyParser().parse_listing_page(json.dumps({'products': [{
         'title':'Atomic Test Skis 2025', 'handle':handle, 'vendor':'Atomic', 'product_type':'Skis',
@@ -52,7 +51,7 @@ def test_missing_availability_is_unknown_and_sold_out_is_not_selectable():
 def test_coverage_distinguishes_variant_count_from_confirmed_sizes():
     deals = _products_to_deals(products(), 'Test')
     unknown = _products_to_deals(products([
-        dict(id=99, price='200', compare_at_price='600', option1='180')
+        {'id': 99, 'price': '200', 'compare_at_price': '600', 'option1': '180'}
     ], handle='unknown'), 'Test')
     report = build_scrape_report(deals + unknown, [StoreConfig('Test', 'shop.test')])
     assert (report.total_deals, report.variant_offers, report.deals_with_variants,
@@ -78,8 +77,8 @@ def test_size_selects_its_price_discount_and_url_before_count_and_sort(tmp_path)
 
 def test_budget_can_select_a_different_variant_not_discard_whole_product(tmp_path):
     path, _ = setup_db(tmp_path, [
-        dict(id=1,price='600',compare_at_price='2000',available=True,option1='160'),
-        dict(id=2,price='300',compare_at_price='600',available=True,option1='180'),
+        {'id': 1,'price': '600','compare_at_price': '2000','available': True,'option1': '160'},
+        {'id': 2,'price': '300','compare_at_price': '600','available': True,'option1': '180'},
     ])
     assert query(path)[0].current_price == 600  # Greatest percentage, not cheapest.
     assert query(path, max_price=350)[0].current_price == 300
@@ -102,8 +101,8 @@ def test_variant_history_does_not_compare_different_sizes(tmp_path):
     deals[0].scraped_at -= timedelta(hours=1)
     asyncio.run(upsert_deals(deals, path))
     changed = _products_to_deals(products([
-        dict(id=11,price='180',compare_at_price='1000',available=True,option1='160'),
-        dict(id=12,price='350',compare_at_price='1000',available=True,option1='180'),
+        {'id': 11,'price': '180','compare_at_price': '1000','available': True,'option1': '160'},
+        {'id': 12,'price': '350','compare_at_price': '1000','available': True,'option1': '180'},
     ]), 'Test')
     asyncio.run(upsert_deals(changed, path))
     selected = query(path, size='180')[0]
@@ -116,7 +115,7 @@ def test_unknown_legacy_offers_remain_browseable_but_not_confirmed_size_matches(
     path = tmp_path/'legacy.db'
     asyncio.run(init_db(path))
     deal = AggregatedDeal(None,'Test','Legacy Skis 2017','https://shop.test/legacy',100,500,80,
-                          'skis','160cm, 180cm',160,180,datetime.now(timezone.utc).replace(tzinfo=None))
+                          'skis','160cm, 180cm',160,180,datetime.now(UTC).replace(tzinfo=None))
     asyncio.run(upsert_deals([deal],path))
     assert query(path)[0].availability == 'unknown'
     assert query(path)[0].variant_key is None
@@ -169,7 +168,7 @@ def test_observed_aspen_feed_preserves_real_variant_identity_and_size(tmp_path):
 
 def test_size_selection_orders_matching_offers_before_pagination(tmp_path):
     path, _ = setup_db(tmp_path)
-    more = _products_to_deals(products([dict(id=21,price='300',compare_at_price='1000',available=True,option1='180')], 'other'), 'Test')
+    more = _products_to_deals(products([{'id': 21,'price': '300','compare_at_price': '1000','available': True,'option1': '180'}], 'other'), 'Test')
     # All products in one snapshot share a time.
     original = _products_to_deals(products(), 'Test')
     for d in more+original:
@@ -181,9 +180,8 @@ def test_size_selection_orders_matching_offers_before_pagination(tmp_path):
 
 
 def test_size_filter_full_page_partial_and_pagination_agree(tmp_path, monkeypatch):
-    import aggregator.web.routes as routes
-    import aggregator.web.app as app
-    import aggregator.db as db
+    from aggregator import db
+    from aggregator.web import app, routes
     path, _ = setup_db(tmp_path)
     monkeypatch.setenv('PUBLIC_MODE','1')
     monkeypatch.setenv('DISABLE_APP_LIFESPAN','1')

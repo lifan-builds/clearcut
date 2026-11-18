@@ -5,12 +5,11 @@
     "DEALS_DB_READ_ONLY": "1",
     "TURSO_DIRECT_CONNECTION": "1",
     "DISABLE_APP_LIFESPAN": "1",
-    "AUTH_DB_PATH": "/tmp/auth_replica.db",
-    "MAX_DB_STALENESS_HOURS": "18"
+    "AUTH_DB_PATH": "/tmp/auth_replica.db"
   },
   "functions": {
     "api/index.py": {
-      "excludeFiles": "{catalogs/fresh-powder/data/deals.db,common/tests/**,catalogs/*/tests/**,catalogs/*/history/**,catalogs/*/tampermonkey/**,docs/**,.pytest_cache/**,**/__pycache__/**}",
+      "excludeFiles": "{catalogs/fresh-powder/data/deals.db,common/tests/**,catalogs/*/tests/**,catalogs/*/tampermonkey/**,docs/**,.pytest_cache/**,**/__pycache__/**}",
       "includeFiles": "{catalogs/fresh-powder/data/deals.db.gz,catalogs/fresh-powder/data/deals.db.manifest.json}"
     }
   },

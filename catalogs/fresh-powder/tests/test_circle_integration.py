@@ -4,9 +4,8 @@ import json
 from pathlib import Path
 
 import httpx
-from aggregator.config import STORES
-
 from aggregator import scraper
+from aggregator.config import STORES
 
 FIXTURES = Path(__file__).resolve().parents[3] / 'common/tests/fixtures/thecircle'
 ORIGIN = 'https://www.thecirclewhistler.com'

@@ -2,10 +2,10 @@
 import json
 import sqlite3
 from contextlib import contextmanager
-from datetime import UTC
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from deal_common.catalog.identity import manufacturer_name
+from deal_common.catalog.definition import manufacturer_name
 
 
 @contextmanager
@@ -56,8 +56,6 @@ def save_source(path: Path, catalog: str, name: str, observed_at: str,
                                (payload, observed_at, name))
             connection.execute("INSERT OR REPLACE INTO observations VALUES (?, ?, ?)",
                                (name, observed_at, payload))
-            # History is daily evidence, not every retry. Keep the latest successful
-            # observation per UTC day and a bounded 45-day window for release assets.
             connection.execute("""
                 DELETE FROM observations WHERE source=? AND (
                     datetime(observed_at) < datetime(?, '-45 days') OR
@@ -77,11 +75,12 @@ def read_sources(path: Path, catalog: str) -> list[dict]:
 
 
 def read_offer_history(path: Path, catalog: str, source: str, product: dict, offer: dict,
-                       *, now, days: int = 45, brand_aliases: tuple[tuple[str, str], ...] = ()) -> list[dict]:
+                       *, now: datetime, days: int = 45,
+                       brand_aliases: tuple[tuple[str, str], ...] = ()) -> list[dict]:
     """One successful observation per UTC day, for the exact current identity only."""
-    from datetime import datetime, timedelta
     cutoff = now - timedelta(days=days)
     identity = (product["url"], product["name"], manufacturer_name(product["brand"], brand_aliases=brand_aliases))
+    offer_key = (offer["variant_key"], offer["options"], offer["url"])
     with database(path, catalog) as connection:
         rows = connection.execute("""
             SELECT observed_at, products FROM observations
@@ -98,11 +97,13 @@ def read_offer_history(path: Path, catalog: str, source: str, product: dict, off
                  manufacturer_name(historical["brand"], brand_aliases=brand_aliases)) != identity):
                 continue
             for candidate in historical["offers"]:
-                if (candidate["variant_key"], candidate["options"], candidate["url"]) != (offer["variant_key"], offer["options"], offer["url"]):
-                    continue
-                daily[stamp.astimezone(UTC).date().isoformat()] = {
-                    "observed_at": row["observed_at"], "price": candidate["current_price"],
-                    "reference": candidate["original_price"], "availability": candidate["availability"],
-                    "availability_note": candidate.get("availability_note", ""),
-                    "price_note": candidate.get("price_note", "")}
+                if (candidate["variant_key"], candidate["options"], candidate["url"]) == offer_key:
+                    daily[stamp.astimezone(UTC).date().isoformat()] = {
+                        "observed_at": row["observed_at"],
+                        "price": candidate["current_price"],
+                        "reference": candidate["original_price"],
+                        "availability": candidate["availability"],
+                        "availability_note": candidate.get("availability_note", ""),
+                        "price_note": candidate.get("price_note", ""),
+                    }
     return list(reversed(daily.values()))

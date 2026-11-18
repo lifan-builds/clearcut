@@ -1,27 +1,33 @@
-"""Snow and ski-themed word list for human-readable invite code generation."""
+"""Snow and ski-themed word list and invite code generator."""
+
+from __future__ import annotations
+
+import random
+import secrets
 
 SNOW_WORDS = [
-    # Terrain
     "POWDER", "ALPINE", "SUMMIT", "GLACIER", "CORNICE", "MOGUL",
     "HALFPIPE", "RIDGELINE", "TREELINE", "COULOIR", "CIRQUE",
     "CHUTE", "GULLY", "BASIN", "BOWL", "PEAK", "CREST", "COL",
-    # Snow conditions
     "BLIZZARD", "FRESH", "GROOMERS", "CRUD", "CORN", "SLUSH",
     "CRUST", "HARDPACK", "CHAMPAGNE", "DEEP",
-    # Ski maneuvers
     "CARVE", "SHRED", "SLASH", "SEND", "CHARGE", "RIPP",
     "PIVOT", "JUMP", "DRIFT", "GLIDE", "TUCK",
-    # Gear
     "BINDING", "EDGE", "BASE", "TOPSHEET", "CAMBER", "ROCKER",
     "SIDECUT", "SHOVEL", "TAIL", "BOOT", "LINER", "BUCKLE",
-    # Mountains / ski culture
-    "POWDER", "STORM", "VERTICAL", "LIFT", "GONDOLA", "TBAR",
+    "STORM", "VERTICAL", "LIFT", "GONDOLA", "TBAR",
     "PATROL", "ICON", "LEGEND", "STEEZE", "STYLE",
     "STOKE", "RIPPING", "SHREDDER", "GNAR", "PILLOW",
-    # Season
-    "WINTER", "FROST", "FLURRY", "DRIFT", "FREEZE",
+    "WINTER", "FROST", "FLURRY", "FREEZE",
     "ARCTIC", "NORDIC", "POLAR",
-    # Colors / nature
     "WHITE", "SILVER", "COBALT", "AZURE", "CRYSTAL", "SLATE",
-    "FROST", "DIAMOND", "TEAL", "STEEL",
+    "DIAMOND", "TEAL", "STEEL",
 ]
+
+
+def generate_readable_code() -> str:
+    """Generate a snow-themed invite code like POWDER-FROST-42."""
+    word1 = random.choice(SNOW_WORDS)
+    word2 = random.choice(SNOW_WORDS)
+    num = secrets.randbelow(90) + 10
+    return f"{word1}-{word2}-{num}"

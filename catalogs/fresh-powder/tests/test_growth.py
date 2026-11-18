@@ -2,13 +2,14 @@
 import asyncio
 import json
 import sqlite3
-from bs4 import BeautifulSoup
+
 import pytest
-from fastapi.testclient import TestClient
 from aggregator import auth_db
 from aggregator.web import event_routes
 from aggregator.web.app import create_app
 from aggregator.web.guides import GUIDES
+from bs4 import BeautifulSoup
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture

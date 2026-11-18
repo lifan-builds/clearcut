@@ -2,49 +2,44 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import re
+import sqlite3
 
-from fastapi import APIRouter, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+import aiosqlite
+from deal_common.rate_limit import SlidingWindowRateLimiter, client_key
+from fastapi import APIRouter, Form, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
-from aggregator.auth import (
-    SESSION_COOKIE,
-    create_session_token,
-    is_public_mode,
-)
-from aggregator.auth_db import validate_invite_code, record_code_use, add_to_waitlist
+from aggregator.auth import SESSION_COOKIE, create_session_token, is_public_mode
+from aggregator.auth_db import add_to_waitlist, record_code_use, validate_invite_code
 from aggregator.config import STORES
 from aggregator.db import query_deals
-from deal_common.rate_limit import SlidingWindowRateLimiter, client_key
-
-TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+from aggregator.web.seo import templates
 
 invite_router = APIRouter()
 INVITE_SUBMIT_LIMIT = 10
 INVITE_WINDOW_SECONDS = 300
 invite_submit_limiter = SlidingWindowRateLimiter(window_seconds=INVITE_WINDOW_SECONDS)
+CAD_STORES = {s.name for s in STORES if s.currency == "CAD"}
 
 
 async def _landing_context(error: str | None = None) -> dict:
     try:
         deal_count = await query_deals(count_only=True)
-    except Exception:
+    except (sqlite3.Error, aiosqlite.Error, OSError, RuntimeError, ValueError):
         deal_count = 0
-    # Fetch a handful of top deals for the preview cards
     try:
         sample_deals = await query_deals(
             min_discount=25, min_price=100, sort_by="discount_pct", limit=6,
         )
-    except Exception:
+    except (sqlite3.Error, aiosqlite.Error, OSError, RuntimeError, ValueError):
         sample_deals = []
     return {
         "error": error,
         "deal_count": deal_count or 0,
         "store_count": len(STORES),
         "sample_deals": sample_deals,
-        "cad_stores": {s.name for s in STORES if s.currency == "CAD"},
+        "cad_stores": CAD_STORES,
     }
 
 
@@ -76,7 +71,6 @@ async def invite_submit(request: Request, code: str = Form(...)):
         return templates.TemplateResponse(
             request=request, name="invite.html", context=ctx,
         )
-    # Record the use for tracking, then issue a JWT
     await record_code_use(code)
     token = create_session_token(code)
     response = RedirectResponse(url="/", status_code=302)
@@ -87,14 +81,12 @@ async def invite_submit(request: Request, code: str = Form(...)):
 @invite_router.post("/waitlist")
 async def waitlist_submit(request: Request, email: str = Form(...)):
     """Add an email to the waitlist."""
-    from fastapi.responses import JSONResponse
-    import re
     if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email.strip()) or len(email) > 254:
         return JSONResponse({"ok": False, "error": "Please enter a valid email address."}, status_code=422)
     if not invite_submit_limiter.allow(client_key(request, "waitlist"), INVITE_SUBMIT_LIMIT):
         return JSONResponse({"ok": False, "error": "Please wait a few minutes and try again."}, status_code=429)
     try:
         await add_to_waitlist(email.strip())
-    except Exception:
+    except (sqlite3.Error, OSError, RuntimeError, ValueError):
         return JSONResponse({"ok": False, "error": "We could not save your email. Please try again."}, status_code=503)
     return JSONResponse({"ok": True})

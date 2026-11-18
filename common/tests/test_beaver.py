@@ -174,3 +174,23 @@ def test_independent_audit_refetches_main_panel_after_matching_variant_json():
     assert result['status'] == 'mismatch'
     assert result['checks']['stock'] and result['checks']['price']
     assert result['checks']['purchase_stock'] is False
+
+
+@pytest.mark.parametrize('variants', [None, [], [{'id': 'absent'}]])
+def test_beaver_matching_purchase_panel_cannot_resolve_missing_endpoint_variant(variants):
+    product = parse()
+    card = {'name': product.name, 'store': 'Beaver Industrial Supply', 'offer': asdict(product.offers[0])}
+    raw = {**RAW, 'variants': variants}
+
+    def handler(request):
+        if request.url.path == '/cart.js':
+            return httpx.Response(200, json={'currency': 'USD'})
+        if request.url.path.endswith('.js'):
+            return httpx.Response(200, json=raw)
+        return httpx.Response(200, text=HTML)
+
+    result = asyncio.run(audit_sample([card], {'Beaver Industrial Supply': 'beavertools.com'},
+                                      delay=0, transport=httpx.MockTransport(handler)))[0]
+    assert result['status'] == 'inconclusive'
+    assert result['checks']['product_endpoint'] is False
+    assert all(value for key, value in result['checks'].items() if key.startswith('purchase_'))

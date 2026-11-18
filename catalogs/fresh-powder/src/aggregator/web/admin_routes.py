@@ -2,21 +2,19 @@
 
 from __future__ import annotations
 
-import random
-import secrets
-from pathlib import Path
-
-from fastapi import APIRouter, Request, Form
+from deal_common.rate_limit import SlidingWindowRateLimiter, client_key
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 
 from aggregator.auth import auth_redirect_path, require_invite
-from aggregator.auth_db import create_invite_codes, list_invite_codes, list_waitlist, list_alert_signups
-from deal_common.rate_limit import SlidingWindowRateLimiter, client_key
-from aggregator.wordlist import SNOW_WORDS
-
-TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+from aggregator.auth_db import (
+    create_invite_codes,
+    list_alert_signups,
+    list_invite_codes,
+    list_waitlist,
+)
+from aggregator.web.seo import templates
+from aggregator.wordlist import generate_readable_code
 
 admin_router = APIRouter(prefix="/admin")
 ADMIN_CREATE_CODES_LIMIT = 10
@@ -24,14 +22,6 @@ ADMIN_CREATE_CODES_WINDOW_SECONDS = 300
 admin_create_codes_limiter = SlidingWindowRateLimiter(
     window_seconds=ADMIN_CREATE_CODES_WINDOW_SECONDS
 )
-
-
-def _generate_readable_code() -> str:
-    """Generate a human-readable snow-themed invite code like POWDER-FROST-42."""
-    word1 = random.choice(SNOW_WORDS)
-    word2 = random.choice(SNOW_WORDS)
-    num = secrets.randbelow(90) + 10  # 10-99
-    return f"{word1}-{word2}-{num}"
 
 
 async def _require_admin(request: Request) -> bool:
@@ -48,7 +38,8 @@ async def admin_codes_page(request: Request):
     waitlist = await list_waitlist()
     alert_signups = await list_alert_signups()
     return templates.TemplateResponse(
-        request=request, name="admin_codes.html",
+        request=request,
+        name="admin_codes.html",
         context={"codes": codes, "max_uses": 5, "waitlist": waitlist, "alert_signups": alert_signups},
     )
 
@@ -61,8 +52,8 @@ async def admin_create_codes(request: Request, count: int = Form(5)):
         client_key(request, "admin-create-codes"), ADMIN_CREATE_CODES_LIMIT
     ):
         return HTMLResponse("Too many code generation requests. Please try again later.", status_code=429)
-    count = min(count, 50)  # cap at 50
-    new_codes = [_generate_readable_code() for _ in range(count)]
+    count = min(count, 50)
+    new_codes = [generate_readable_code() for _ in range(count)]
     await create_invite_codes(new_codes)
     codes = await list_invite_codes()
     waitlist = await list_waitlist()

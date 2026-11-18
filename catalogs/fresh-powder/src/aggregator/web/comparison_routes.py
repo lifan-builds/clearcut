@@ -1,11 +1,17 @@
 """Crawlable model/brand destinations and a plain-language methodology page."""
 from typing import Annotated
-from pydantic import BeforeValidator
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
+from pydantic import BeforeValidator
 
-from aggregator.comparisons import BRANDS, INDEXABLE_BRANDS, PRODUCTS, catalog_summary, product_detail
+from aggregator.comparisons import (
+    BRANDS,
+    INDEXABLE_BRANDS,
+    PRODUCTS,
+    catalog_summary,
+    product_detail,
+)
 from aggregator.web.routes import templates
 from aggregator.web.seo import site_url
 

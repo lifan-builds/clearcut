@@ -7,23 +7,22 @@ from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
-from deal_common.catalog.definition import Catalog
-from deal_common.catalog.identity import manufacturer_name
+from deal_common.catalog.definition import Catalog, manufacturer_name
 from deal_common.catalog.storage import save_source
 from deal_common.http import DEFAULT_HEADERS, fetch_products
 from deal_common.offers import discount
 from deal_common.parsers.beaver import BeaverShopifyParser
 from deal_common.parsers.bikecloset import BikeClosetParser
 from deal_common.parsers.bikecloset import offer_destination as bikecloset_destination
-from deal_common.parsers.bolton import BoltonParser
-from deal_common.parsers.bolton import offer_destination as bolton_destination
-from deal_common.parsers.grizzly import GrizzlyParser, sku_destination
 from deal_common.parsers.racycles import RacyclesShopifyParser
-from deal_common.parsers.rockler import RocklerParser
-from deal_common.parsers.rockler import offer_destination as rockler_destination
 from deal_common.parsers.shopify import ShopifyParser
 from deal_common.parsers.taylor import TaylorParser
 from deal_common.parsers.taylor import offer_destination as taylor_destination
+
+DESTINATION_VALIDATORS = {
+    "bikecloset": bikecloset_destination,
+    "taylor": taylor_destination,
+}
 
 
 def safe_url(value: str | None, domain: str | None = None) -> bool:
@@ -39,7 +38,12 @@ def safe_url(value: str | None, domain: str | None = None) -> bool:
         return False
 
 
+def _shopify_destination(url: str, key: str) -> bool:
+    return parse_qs(urlsplit(url).query).get("variant") == [key]
+
+
 def normalize(products, catalog: Catalog, domain: str, *, parser_type: str = "shopify") -> list[dict]:
+    validate_destination = DESTINATION_VALIDATORS.get(parser_type, _shopify_destination)
     result = {}
     for product in products:
         classification = catalog.classify(product)
@@ -47,35 +51,40 @@ def normalize(products, catalog: Catalog, domain: str, *, parser_type: str = "sh
             continue
         offers = []
         for offer in product.offers:
-            if parser_type == 'bolton':
-                destination_matches = bolton_destination(offer.url, offer.variant_key)
-            elif parser_type == 'bikecloset':
-                destination_matches = bikecloset_destination(offer.url, offer.variant_key)
-            elif parser_type == 'grizzly':
-                destination_matches = sku_destination(offer.url, offer.variant_key)
-            elif parser_type == 'taylor':
-                destination_matches = taylor_destination(offer.url, offer.variant_key)
-            elif parser_type == 'rockler':
-                destination_matches = rockler_destination(offer.url, offer.variant_key)
-            else:
-                destination_matches = parse_qs(urlsplit(offer.url).query).get('variant') == [offer.variant_key]
             if (offer.availability not in {"in_stock", "unknown"}
                     or discount(offer.current_price, offer.original_price) <= 0
                     or not safe_url(offer.url, domain)
                     or urlsplit(offer.url).path != urlsplit(product.url).path
-                    or not destination_matches):
+                    or not validate_destination(offer.url, offer.variant_key)):
                 continue
             data = asdict(offer)
             data["image_url"] = offer.image_url if safe_url(offer.image_url) else None
             offers.append(data)
         if not offers:
             continue
-        row = {"name": product.name, "url": product.url,
-               "brand": manufacturer_name(product.brand, brand_aliases=catalog.brand_aliases),
-               "source_category": product.product_type,
-               **asdict(classification), "offers": offers}
-        result[product.url] = row
+        result[product.url] = {
+            "name": product.name, "url": product.url,
+            "brand": manufacturer_name(product.brand, brand_aliases=catalog.brand_aliases),
+            "source_category": product.product_type,
+            **asdict(classification), "offers": offers,
+        }
     return list(result.values())
+
+
+def _build_parser(source, catalog: Catalog):
+    if source.parser_type == "bikecloset":
+        return BikeClosetParser()
+    if source.parser_type == "taylor":
+        return TaylorParser()
+    if source.parser_type != "shopify":
+        raise ValueError("Unsupported catalog parser")
+    if source.domain == "racycles.com":
+        return RacyclesShopifyParser(size_option_names=catalog.size_option_names,
+                                     size_value_pattern=catalog.size_value_pattern)
+    if source.domain == "beavertools.com":
+        return BeaverShopifyParser()
+    return ShopifyParser(size_option_names=catalog.size_option_names,
+                         size_value_pattern=catalog.size_value_pattern)
 
 
 async def refresh(catalog: Catalog, path: Path, *, max_pages: int = 30,
@@ -88,26 +97,7 @@ async def refresh(catalog: Catalog, path: Path, *, max_pages: int = 30,
             observed_at = datetime.now(UTC).isoformat()
             if source.currency != "USD":
                 raise ValueError("These catalogs accept USD sources only")
-            if source.parser_type not in {"shopify", "grizzly", "taylor", "rockler", "bikecloset", "bolton"}:
-                raise ValueError("Unsupported catalog parser")
-            if source.parser_type == 'bolton':
-                parser = BoltonParser()
-            elif source.parser_type == 'bikecloset':
-                parser = BikeClosetParser()
-            elif source.parser_type == 'rockler':
-                parser = RocklerParser()
-            elif source.parser_type == 'taylor':
-                parser = TaylorParser()
-            elif source.parser_type == 'grizzly':
-                parser = GrizzlyParser()
-            elif source.domain == 'racycles.com':
-                parser = RacyclesShopifyParser(size_option_names=catalog.size_option_names,
-                                              size_value_pattern=catalog.size_value_pattern)
-            elif source.domain == 'beavertools.com':
-                parser = BeaverShopifyParser()
-            else:
-                parser = ShopifyParser(size_option_names=catalog.size_option_names,
-                                       size_value_pattern=catalog.size_value_pattern)
+            parser = _build_parser(source, catalog)
             products = await fetch_products(source, parser, client,
                                             semaphore=asyncio.Semaphore(1), delay=delay,
                                             max_pages=max_pages, outcome=outcome,

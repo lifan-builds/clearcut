@@ -1,41 +1,8 @@
 """Tests for BS4 HTML parsers using sample HTML fragments."""
 
-from aggregator.parsers.alpineshopvt import AlpineShopVTParser
 from aggregator.parsers.coloradodiscount import ColoradoDiscountParser
-from deal_common.parsers.shopify import ShopifyParser
 from aggregator.parsers.sacredride import SacredRideParser
-
-
-class TestAlpineShopVT:
-    parser = AlpineShopVTParser()
-
-    def test_parse_product_card(self):
-        html = """
-        <div class="product">
-            <a href="/product/atomic-bent-100"><h4>Atomic Bent 100</h4></a>
-            <div class="sale-price">$499.99</div>
-            <div class="was-price">$599.99</div>
-            <img src="https://example.com/img.jpg" />
-        </div>
-        """
-        products = self.parser.parse_listing_page(html, "https://alpineshopvt.com/skis")
-        assert len(products) == 1
-        p = products[0]
-        assert p.name == "Atomic Bent 100"
-        assert p.current_price == 499.99
-        assert p.original_price == 599.99
-
-    def test_no_products(self):
-        html = "<div>No products here</div>"
-        assert self.parser.parse_listing_page(html, "https://example.com") == []
-
-    def test_next_page(self):
-        html = '<a rel="next" href="/page/2">Next</a>'
-        assert self.parser.get_next_page_url(html, "https://example.com/page/1") == "https://example.com/page/2"
-
-    def test_no_next_page(self):
-        html = "<div>Last page</div>"
-        assert self.parser.get_next_page_url(html, "https://example.com") is None
+from deal_common.parsers.shopify import ShopifyParser
 
 
 class TestColoradoDiscount:
@@ -182,7 +149,7 @@ class TestShopifyCompleteness:
         assert url == "https://www.evo.com/collections/sale-snowboard-boots/products.json?limit=50&page=1"
 
     def test_shopify_next_page_uses_current_limit(self):
-        html = '{"products": [%s]}' % ",".join("{}" for _ in range(50))
+        html = '{{"products": [{}]}}'.format(",".join("{}" for _ in range(50)))
         next_url = self.parser.get_next_page_url(
             html,
             "https://www.evo.com/collections/sale-skis/products.json?limit=50&page=1",

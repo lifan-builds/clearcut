@@ -6,11 +6,10 @@ from datetime import datetime, timedelta
 import aiosqlite
 import httpx
 import pytest
-
-from aggregator.db import init_db, upsert_deals, query_deals
+from aggregator.config import StoreConfig
+from aggregator.db import init_db, query_deals, upsert_deals
 from aggregator.models import AggregatedDeal
 from aggregator.scraper import fetch_listing, scrape_store
-from aggregator.config import StoreConfig
 from deal_common.parsers.shopify import ShopifyParser
 
 
@@ -100,9 +99,9 @@ def test_history_first_seen_and_currency_queries(tmp_path):
 
 
 def test_excludes_false_deals_and_recovers_numeric_lengths():
-    from aggregator.scraper import _products_to_deals, _is_kids_product
     from aggregator.categorizer import categorize, is_excluded
     from aggregator.reviews import _extract_brand
+    from aggregator.scraper import _is_kids_product, _products_to_deals
     from deal_common.models import Product
     for name in ["Tailgating Grill & Chill Bundle", "Icon Skirt Western Yoke", "Women's Unreality Dress", "Sunbeam Outdoor Steel Fire Pit"]:
         assert is_excluded(name)

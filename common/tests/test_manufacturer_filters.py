@@ -7,7 +7,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 from bs4 import BeautifulSoup
 from cycling_deals.catalog import CATALOG
-from deal_common.catalog.identity import manufacturer_name
+from deal_common.catalog.definition import manufacturer_name
 from deal_common.catalog.query import query
 from deal_common.catalog.refresh import normalize
 from deal_common.catalog.storage import (

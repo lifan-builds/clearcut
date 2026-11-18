@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from functools import partial
 
 import aggregator.auth_db as auth_db_module
@@ -68,13 +68,21 @@ def isolated_app(tmp_path, monkeypatch):
 
 def test_private_mode_serves_public_landing_without_session(isolated_app, monkeypatch):
     monkeypatch.setenv("PUBLIC_MODE", "0")
-    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key-at-least-32-characters")
+    monkeypatch.setattr(invite_routes, "query_deals", partial(db_module.query_deals, db_path=isolated_app))
+    sample = _make_deal("Atomic Maverick 100")
+    sample.current_price = 299.99
+    sample.discount_pct = 50.0
 
     with TestClient(app_module.create_app()) as client:
+        asyncio.run(db_module.upsert_deals([sample], isolated_app))
         home = client.get("/", follow_redirects=False)
+        invite = client.get("/invite", follow_redirects=False)
         protected = client.get("/deals", follow_redirects=False)
 
     assert home.status_code == 200
+    assert invite.status_code == 200
+    assert "Atomic Maverick 100" in invite.text
     assert "FreshPowder" in home.text
     assert "affiliate_app_confirm.php" not in home.text
     assert protected.status_code == 302
@@ -85,9 +93,8 @@ def test_private_mode_requires_secret_key(isolated_app, monkeypatch):
     monkeypatch.setenv("PUBLIC_MODE", "0")
     monkeypatch.delenv("SECRET_KEY", raising=False)
 
-    with pytest.raises(RuntimeError, match="SECRET_KEY must be set"):
-        with TestClient(app_module.create_app()):
-            pass
+    with pytest.raises(RuntimeError, match="SECRET_KEY must be set"), TestClient(app_module.create_app()):
+        pass
 
 
 def test_public_mode_serves_homepage_and_public_robots(isolated_app, monkeypatch):
@@ -137,7 +144,7 @@ def test_vercel_runtime_validates_deals_db_without_migrations(isolated_app, monk
 
 def test_invite_submission_sets_session_cookie(isolated_app, monkeypatch):
     monkeypatch.setenv("PUBLIC_MODE", "0")
-    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key-at-least-32-characters")
 
     async def _valid_code(code: str) -> bool:
         return code == "FRESH123"
@@ -158,7 +165,7 @@ def test_invite_submission_sets_session_cookie(isolated_app, monkeypatch):
 
 def test_mutating_routes_are_rate_limited(isolated_app, monkeypatch):
     monkeypatch.setenv("PUBLIC_MODE", "0")
-    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key-at-least-32-characters")
     monkeypatch.setattr(invite_routes, "INVITE_SUBMIT_LIMIT", 1)
     monkeypatch.setattr(event_routes, "EVENT_POST_LIMIT", 1)
     invite_routes.invite_submit_limiter.clear()
@@ -216,8 +223,8 @@ def test_waitlist_failure_is_not_reported_as_success(isolated_app, monkeypatch):
 
 
 def test_failed_snow_refresh_cannot_make_health_look_current(isolated_app, monkeypatch):
-    from datetime import datetime, timedelta, timezone
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    from datetime import datetime, timedelta
+    now = datetime.now(UTC).replace(tzinfo=None)
     old = (now - timedelta(hours=25)).isoformat()
     async def statuses():
         return [{"checked_at": old, "status": "ok", "deals": 10},
@@ -304,7 +311,8 @@ def test_prelaunch_signup_persistence_dedup_and_removal(isolated_app, monkeypatc
         token = data['removal_token']
         duplicate = client.post('/alerts/signup', data={'email':'test@example.com'}, headers={'accept':'application/json'})
         assert duplicate.json()['removal_token'] is None
-        import sqlite3, os
+        import os
+        import sqlite3
         conn = sqlite3.connect(os.environ['AUTH_DB_PATH'])
         row = conn.execute('SELECT email, consent_version, removal_hash FROM deal_alert_signups').fetchone()
         assert row[0] == 'test@example.com'
@@ -333,8 +341,9 @@ def test_signup_validation_storage_failure_and_no_js(isolated_app, monkeypatch):
 
 
 def test_full_page_pagination_and_currency_match_results(isolated_app, monkeypatch):
+    from urllib.parse import parse_qs, urlsplit
+
     from bs4 import BeautifulSoup
-    from urllib.parse import urlsplit, parse_qs
     monkeypatch.setenv('PUBLIC_MODE', '1')
     observed = []
     asyncio.run(db_module.init_db(isolated_app))

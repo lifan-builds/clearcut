@@ -1,43 +1,52 @@
 import asyncio
+import json
+from copy import deepcopy
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
-
+from bs4 import BeautifulSoup
 from cycling_deals.catalog import CATALOG as CYCLING
-from tool_deals.catalog import CATALOG as TOOLS
 from deal_common.catalog.query import query
 from deal_common.catalog.refresh import normalize, refresh
-from deal_common.catalog.storage import read_sources, save_source
+from deal_common.catalog.storage import (
+    database,
+    read_offer_history,
+    read_sources,
+    save_source,
+)
 from deal_common.catalog.web import create_app
 from deal_common.config import RetailerConfig
 from deal_common.models import Product
-from deal_common.offers import VariantOffer
+from deal_common.offers import VariantOffer, size_key
+from deal_common.parsers.shopify import ShopifyParser
+from fastapi.testclient import TestClient
+from tool_deals.catalog import CATALOG as TOOLS
 
-NOW = datetime(2026, 11, 2, 12, tzinfo=timezone.utc)
+NOW = datetime(2026, 11, 2, 12, tzinfo=UTC)
 
 
 def offer(key="1", price=500, reference=2000, size="M", stock="in_stock"):
-    return dict(variant_key=key, url=f"https://example.com/products/bike?variant={key}",
-                current_price=price, original_price=reference, size=size, options=size,
-                availability=stock, image_url=None, reference_basis="retailer_compare_at")
+    return {"variant_key": key, "url": f"https://example.com/products/bike?variant={key}",
+            "current_price": price, "original_price": reference, "size": size, "options": size,
+            "availability": stock, "image_url": None, "reference_basis": "retailer_compare_at"}
 
 
 def product(name="Test Mountain Bike", offers=None):
-    return dict(name=name, url="https://example.com/products/" + name,
-                brand="Test", category="Mountain bikes", format="", platform="",
-                offers=offers or [offer()])
+    return {"name": name, "url": "https://example.com/products/" + name,
+            "brand": "Test", "category": "Mountain bikes", "format": "", "platform": "",
+            "offers": offers or [offer()]}
 
 
 def source(products, timestamp=NOW):
-    return dict(name="BikesOnline", successful_at=timestamp.isoformat(), products=products,
-                checked_at=timestamp.isoformat(), status="complete", detail={})
+    return {"name": "BikesOnline", "successful_at": timestamp.isoformat(), "products": products,
+            "checked_at": timestamp.isoformat(), "status": "complete", "detail": {}}
 
 
 def filters(**overrides):
-    return dict(min_discount=0, min_reference=0, max_price=0, page=1, **overrides)
+    return {"min_discount": 0, "min_reference": 0, "max_price": 0, "page": 1, **overrides}
 
 
 def test_size_selects_one_real_offer_before_ranking_count_and_pagination():
@@ -59,7 +68,7 @@ def test_reference_floor_and_budget_apply_to_same_variant():
     assert query([source([p])], f, now=NOW)["total"] == 0
 
 
-@pytest.mark.parametrize("label,requested", [("SM", "S"), ("MD", "Medium"), ("LG", "L")])
+@pytest.mark.parametrize(("label", "requested"), [("SM", "S"), ("MD", "Medium"), ("LG", "L")])
 def test_retailer_size_abbreviations_match_without_splitting_compound_sizes(label, requested):
     exact = product("Exact", [offer("exact", 1000, 2000, label)])
     compound = product("Compound", [offer("compound", 500, 2000, "S/M/L")])
@@ -107,6 +116,7 @@ def test_refresh_failures_do_not_renew_or_remove_previous_data(tmp_path, mode):
     save_source(db, "cycling", "Example", NOW.isoformat(), [product()], "complete", {})
     config = RetailerConfig("Example", "example.com", ["https://example.com/collections/sale"],
                             shopify_products_limit=1, verify_shopify_currency=(mode == "currency"))
+
     def handler(request):
         if mode == "forbidden":
             return httpx.Response(403)
@@ -115,6 +125,7 @@ def test_refresh_failures_do_not_renew_or_remove_previous_data(tmp_path, mode):
         if mode == "malformed":
             return httpx.Response(200, json={"error": "not inventory"})
         return httpx.Response(200, json={"products": [{"title": "Full price"}]})
+
     report = asyncio.run(refresh(replace(CYCLING, sources=(config,)), db, max_pages=1,
                                  delay=0, transport=httpx.MockTransport(handler)))
     assert report[0]["status"] == "incomplete"
@@ -172,8 +183,6 @@ def test_normalize_rejects_external_links_nonfinite_and_unsafe_images():
 
 
 def test_frame_size_does_not_include_wheel_size_or_guess_unknown_option():
-    import json
-    from deal_common.parsers.shopify import ShopifyParser
     parser = ShopifyParser(size_option_names=CYCLING.size_option_names)
     item = {"title": "Mountain Bike", "handle": "bike", "options": [
         {"name": "Wheel Size"}, {"name": "Frame Size"}], "variants": [
@@ -191,8 +200,6 @@ def test_frame_size_does_not_include_wheel_size_or_guess_unknown_option():
 
 
 def test_removing_reference_filter_does_not_silently_reapply_default(tmp_path):
-    from bs4 import BeautifulSoup
-    from urllib.parse import parse_qs, urlsplit
     client = TestClient(create_app(CYCLING, tmp_path / "empty.db"))
     page = BeautifulSoup(client.get("/?size=M&stock=true&page=3").text, "html.parser")
     link = page.select_one('a[aria-label="Remove filter: Reference ≥ $ 1000"]')
@@ -214,7 +221,6 @@ def test_normalize_rejects_wrong_product_or_variant_purchase_destination():
 
 
 def test_history_never_combines_variants_identity_or_multiple_days(tmp_path):
-    from deal_common.catalog.storage import read_offer_history
     db = tmp_path / "history.db"
     current = product("Bike", [offer("one", 1000, 2000), offer("two", 1500, 2000)])
     save_source(db, "cycling", "BikesOnline", (NOW - timedelta(days=1)).isoformat(), [current], "complete", {})
@@ -233,9 +239,9 @@ def test_history_never_combines_variants_identity_or_multiple_days(tmp_path):
 def test_history_route_scoped_to_configured_source_and_current_variant(tmp_path):
     db = tmp_path / "history.db"
     p = product()
-    save_source(db, "cycling", "BikesOnline", datetime.now(timezone.utc).isoformat(), [p], "complete", {})
+    save_source(db, "cycling", "BikesOnline", datetime.now(UTC).isoformat(), [p], "complete", {})
     client = TestClient(create_app(CYCLING, db))
-    params = dict(source="BikesOnline", product=p["url"], variant="1")
+    params = {"source": "BikesOnline", "product": p["url"], "variant": "1"}
     page = client.get("/history", params=params)
     assert page.status_code == 200 and "1 observed day" in page.text and "Still collecting history" in page.text
     assert client.get("/history", params={**params, "variant": "not-this-variant"}).status_code == 404
@@ -244,7 +250,6 @@ def test_history_route_scoped_to_configured_source_and_current_variant(tmp_path)
 
 @pytest.mark.parametrize("old_brand", ["In Stock", "Out of Stock", "ESD：Nov.30（Black）"])
 def test_history_survives_fulfillment_label_cleanup_without_rewriting_evidence(tmp_path, old_brand):
-    from deal_common.catalog.storage import read_offer_history
     db = tmp_path / "history.db"
     previous = {**product(offers=[offer(price=1200, stock="unknown")]), "brand": old_brand}
     current = {**product(offers=[offer(price=1100)]), "brand": "Unspecified"}
@@ -260,7 +265,7 @@ def test_history_survives_fulfillment_label_cleanup_without_rewriting_evidence(t
     assert db.read_bytes() == original_bytes
 
 
-@pytest.mark.parametrize("level,field,value", [
+@pytest.mark.parametrize(("level", "field", "value"), [
     ("product", "brand", "Real Manufacturer"),
     ("product", "name", "Different build"),
     ("product", "url", "https://example.com/products/other-model"),
@@ -269,7 +274,6 @@ def test_history_survives_fulfillment_label_cleanup_without_rewriting_evidence(t
     ("offer", "url", "https://example.com/products/bike?variant=different"),
 ])
 def test_history_label_cleanup_cannot_merge_other_product_or_variant(tmp_path, level, field, value):
-    from deal_common.catalog.storage import read_offer_history
     db = tmp_path / "history.db"
     previous = {**product(), "brand": "In Stock"}
     current = {**product(), "brand": "Unspecified"}
@@ -285,14 +289,13 @@ def test_frameset_keyword_cannot_override_accessory_taxonomy():
 
 
 def test_daily_history_retention_is_bounded_and_failed_checks_do_not_replace_it(tmp_path):
-    from deal_common.catalog.storage import database
-    db = tmp_path / 'history.db'
-    for timestamp in (NOW-timedelta(days=46), NOW-timedelta(days=1), NOW-timedelta(hours=1), NOW):
-        save_source(db, 'cycling', 'BikesOnline', timestamp.isoformat(), [product()], 'complete', {})
-    save_source(db, 'cycling', 'BikesOnline', (NOW+timedelta(hours=1)).isoformat(), [], 'incomplete', {})
-    with database(db, 'cycling') as connection:
-        observations = [r[0] for r in connection.execute('SELECT observed_at FROM observations ORDER BY observed_at')]
-    assert observations == [(NOW-timedelta(days=1)).isoformat(), NOW.isoformat()]
+    db = tmp_path / "history.db"
+    for timestamp in (NOW - timedelta(days=46), NOW - timedelta(days=1), NOW - timedelta(hours=1), NOW):
+        save_source(db, "cycling", "BikesOnline", timestamp.isoformat(), [product()], "complete", {})
+    save_source(db, "cycling", "BikesOnline", (NOW + timedelta(hours=1)).isoformat(), [], "incomplete", {})
+    with database(db, "cycling") as connection:
+        observations = [r[0] for r in connection.execute("SELECT observed_at FROM observations ORDER BY observed_at")]
+    assert observations == [(NOW - timedelta(days=1)).isoformat(), NOW.isoformat()]
 
 
 @pytest.mark.parametrize("name", [
@@ -302,7 +305,7 @@ def test_daily_history_retention_is_bounded_and_failed_checks_do_not_replace_it(
 ])
 def test_named_machine_does_not_turn_replacement_abrasives_into_power_tools(name):
     assert TOOLS.classify(Product(name=name, url="https://example.com/item", current_price=49,
-                                 original_price=249, product_type="Power Tools")) is None
+                                  original_price=249, product_type="Power Tools")) is None
 
 
 def test_complete_sander_with_included_abrasives_remains_a_power_tool():
@@ -319,8 +322,6 @@ def test_explicit_frameset_tag_precedes_generic_mountain_bike_taxonomy():
 
 
 def test_numeric_s_frame_size_stays_distinct_from_plain_numeric_size():
-    import json
-    from deal_common.parsers.shopify import ShopifyParser
     parser = ShopifyParser(size_option_names=CYCLING.size_option_names,
                            size_value_pattern=CYCLING.size_value_pattern)
     raw = {"handle": "compact-frame", "title": "Compact Frameset", "product_type": "Framesets",
@@ -339,139 +340,123 @@ def test_numeric_s_frame_size_stays_distinct_from_plain_numeric_size():
 
 
 def test_size_facets_use_one_stable_existing_label_per_match_key():
-    from deal_common.offers import size_key
-
-    labels = ['MEDIUM', 'MD', 'Medium', 'm', ' M ', 'M', 'S', 'SM', 'Small', 's',
-              '50', '50cm', '50s', 'S/M', 'S/M/L', 'XS-M', 'XS/M', 'M18', 'm18']
-    rows = [source([product('First', [offer(f'a-{i}', size=label) for i, label in enumerate(labels[:9])])]),
-            {**source([product('Second', [offer(f'b-{i}', size=label)
-                                         for i, label in enumerate(labels[9:])])]), 'name': 'Other'}]
-    rows.append(source([product('Unknown', [offer('unknown', size='XL', stock='unknown')])]))
-    rows.append(source([product('Stale', [offer('stale', size='XXL')])], NOW - timedelta(hours=25)))
-    rows.append(source([product('Future', [offer('future', size='XXXL')])], NOW + timedelta(seconds=1)))
+    labels = ["MEDIUM", "MD", "Medium", "m", " M ", "M", "S", "SM", "Small", "s",
+              "50", "50cm", "50s", "S/M", "S/M/L", "XS-M", "XS/M", "M18", "m18"]
+    rows = [source([product("First", [offer(f"a-{i}", size=label) for i, label in enumerate(labels[:9])])]),
+            {**source([product("Second", [offer(f"b-{i}", size=label)
+                                          for i, label in enumerate(labels[9:])])]), "name": "Other"}]
+    rows.append(source([product("Unknown", [offer("unknown", size="XL", stock="unknown")])]))
+    rows.append(source([product("Stale", [offer("stale", size="XXL")])], NOW - timedelta(hours=25)))
+    rows.append(source([product("Future", [offer("future", size="XXXL")])], NOW + timedelta(seconds=1)))
     result = query(rows, filters(), now=NOW)
-    sizes = result['facets']['size']
-    assert sizes == ['50', '50s', 'M', 'M18', 'S', 'S/M', 'S/M/L', 'XS-M', 'XS/M']
+    sizes = result["facets"]["size"]
+    assert sizes == ["50", "50s", "M", "M18", "S", "S/M", "S/M/L", "XS-M", "XS/M"]
     assert len(sizes) == len({size_key(label) for label in sizes})
     assert set(sizes) <= set(labels)
-    assert query(list(reversed(rows)), filters(), now=NOW)['facets']['size'] == sizes
-    assert query(rows, filters(size='50'), now=NOW)['cards'][0]['offer']['size'] in {'50', '50cm'}
-    assert query(rows, filters(size='50s'), now=NOW)['cards'][0]['offer']['size'] == '50s'
-    assert query(rows, filters(size='S/M'), now=NOW)['cards'][0]['offer']['size'] == 'S/M'
-    assert query(rows, filters(size='M18'), now=NOW)['cards'][0]['offer']['size'] in {'M18', 'm18'}
+    assert query(list(reversed(rows)), filters(), now=NOW)["facets"]["size"] == sizes
+    assert query(rows, filters(size="50"), now=NOW)["cards"][0]["offer"]["size"] in {"50", "50cm"}
+    assert query(rows, filters(size="50s"), now=NOW)["cards"][0]["offer"]["size"] == "50s"
+    assert query(rows, filters(size="S/M"), now=NOW)["cards"][0]["offer"]["size"] == "S/M"
+    assert query(rows, filters(size="M18"), now=NOW)["cards"][0]["offer"]["size"] in {"M18", "m18"}
 
 
 def test_size_facet_simplification_keeps_raw_offer_population_order_and_pagination():
-    import json
-    from copy import deepcopy
-
-    aliases = ['M', 'MD', 'MEDIUM', 'Medium', 'm', ' M ']
-    products = [product(f'P{i:02}', [offer(f'{i}-small', 100, 2000, 'S'),
-                                   offer(f'{i}-medium', 500 + i, 2000, aliases[i % len(aliases)]),
-                                   offer(f'{i}-unknown', 50, 2000, 'M', 'unknown')])
+    aliases = ["M", "MD", "MEDIUM", "Medium", "m", " M "]
+    products = [product(f"P{i:02}", [offer(f"{i}-small", 100, 2000, "S"),
+                                     offer(f"{i}-medium", 500 + i, 2000, aliases[i % len(aliases)]),
+                                     offer(f"{i}-unknown", 50, 2000, "M", "unknown")])
                 for i in range(30)]
-    products.append(product('Compound', [offer('compound', 100, 2000, 'S/M/L')]))
+    products.append(product("Compound", [offer("compound", 100, 2000, "S/M/L")]))
     rows = [source(products)]
     original = deepcopy(rows)
-    expected = query(rows, filters(size='M'), now=NOW)
-    assert expected['total'] == 30 and expected['pages'] == 2
-    assert [card['name'] for card in expected['cards']] == [f'P{i:02}' for i in range(24)]
-    page_two = query(rows, {**filters(size='M'), 'page': 2}, now=NOW)
-    assert [card['name'] for card in page_two['cards']] == [f'P{i:02}' for i in range(24, 30)]
-    expected_cards = expected['cards'] + page_two['cards']
-    for i, card in enumerate(expected_cards):
-        raw = original[0]['products'][i]['offers'][1]
-        assert all(card['offer'][key] == value for key, value in raw.items())
-        assert card['matching_variants'] == 1
+    expected = query(rows, filters(size="M"), now=NOW)
+    assert expected["total"] == 30 and expected["pages"] == 2
+    assert [card["name"] for card in expected["cards"]] == [f"P{i:02}" for i in range(24)]
+    page_two = query(rows, {**filters(size="M"), "page": 2}, now=NOW)
+    assert [card["name"] for card in page_two["cards"]] == [f"P{i:02}" for i in range(24, 30)]
+    for i, card in enumerate(expected["cards"] + page_two["cards"]):
+        raw = original[0]["products"][i]["offers"][1]
+        assert all(card["offer"][key] == value for key, value in raw.items())
+        assert card["matching_variants"] == 1
     for alias in aliases:
         for page in (1, 2):
-            actual = query(rows, {**filters(size=alias), 'page': page}, now=NOW)
-            reference = query(rows, {**filters(size='M'), 'page': page}, now=NOW)
-            assert json.dumps(actual['cards'], sort_keys=True) == json.dumps(reference['cards'], sort_keys=True)
-            assert (actual['total'], actual['page'], actual['pages']) == (30, page, 2)
+            actual = query(rows, {**filters(size=alias), "page": page}, now=NOW)
+            reference = query(rows, {**filters(size="M"), "page": page}, now=NOW)
+            assert json.dumps(actual["cards"], sort_keys=True) == json.dumps(reference["cards"], sort_keys=True)
+            assert (actual["total"], actual["page"], actual["pages"]) == (30, page, 2)
     assert rows == original
 
 
-@pytest.mark.parametrize('catalog', [CYCLING, TOOLS])
+@pytest.mark.parametrize("catalog", [CYCLING, TOOLS])
 def test_legacy_size_alias_selects_representative_and_links_without_changing_cards(tmp_path, catalog):
-    from datetime import UTC
-    from urllib.parse import parse_qs, urlsplit
-
-    from bs4 import BeautifulSoup
-
-    db = tmp_path / f'{catalog.slug}.db'
-    config = RetailerConfig('Fixture', 'example.com', ['https://example.com/collection'])
+    db = tmp_path / f"{catalog.slug}.db"
+    config = RetailerConfig("Fixture", "example.com", ["https://example.com/collection"])
     catalog = replace(catalog, sources=(config,))
-    items = [product(f'P{i:02}', [offer(f'{i}-medium', 500 + i, 2000, 'MD' if i % 2 else 'M')])
+    items = [product(f"P{i:02}", [offer(f"{i}-medium", 500 + i, 2000, "MD" if i % 2 else "M")])
              for i in range(27)]
     for item in items:
-        item['category'] = catalog.categories[0]
-    observed_at = datetime.now(UTC).isoformat()
-    save_source(db, catalog.slug, config.name, observed_at, items, 'complete', {})
+        item["category"] = catalog.categories[0]
+    save_source(db, catalog.slug, config.name, datetime.now(UTC).isoformat(), items, "complete", {})
     client = TestClient(create_app(catalog, db))
-    canonical = BeautifulSoup(client.get('/', params={'size': 'M'}).text, 'html.parser')
-    for alias in ('MD', 'MEDIUM', 'Medium', ' m '):
-        response = client.get('/', params={'size': alias})
+    canonical = BeautifulSoup(client.get("/", params={"size": "M"}).text, "html.parser")
+    for alias in ("MD", "MEDIUM", "Medium", " m "):
+        response = client.get("/", params={"size": alias})
         assert response.status_code == 200
-        page = BeautifulSoup(response.text, 'html.parser')
-        assert [option.get_text() for option in page.select('select[name="size"] option[selected]')] == ['M']
-        assert [option.get_text() for option in page.select('select[name="size"] option')] == ['All ' + catalog.size_label.lower() + 's', 'M']
-        assert page.select_one('.filter-note strong').get_text() == 'M'
-        assert f'{catalog.size_label}: M' in page.select_one('.active-filters').get_text()
-        assert [str(card) for card in page.select('article')] == [str(card) for card in canonical.select('article')]
-        next_url = page.select_one('.pagination a')['href']
-        assert parse_qs(urlsplit(next_url).query)['size'] == ['M']
-        next_page = BeautifulSoup(client.get(next_url).text, 'html.parser')
-        assert len(next_page.select('article')) == 3
-        assert [option.get_text() for option in next_page.select('select[name="size"] option[selected]')] == ['M']
-    unknown = 'Unlisted <size>'
-    response = client.get('/', params={'size': unknown})
-    page = BeautifulSoup(response.text, 'html.parser')
+        page = BeautifulSoup(response.text, "html.parser")
+        assert [option.get_text() for option in page.select('select[name="size"] option[selected]')] == ["M"]
+        assert [option.get_text() for option in page.select('select[name="size"] option')] == [
+            "All " + catalog.size_label.lower() + "s", "M"
+        ]
+        assert page.select_one(".filter-note strong").get_text() == "M"
+        assert f"{catalog.size_label}: M" in page.select_one(".active-filters").get_text()
+        assert [str(card) for card in page.select("article")] == [str(card) for card in canonical.select("article")]
+        next_url = page.select_one(".pagination a")["href"]
+        assert parse_qs(urlsplit(next_url).query)["size"] == ["M"]
+        next_page = BeautifulSoup(client.get(next_url).text, "html.parser")
+        assert len(next_page.select("article")) == 3
+        assert [option.get_text() for option in next_page.select('select[name="size"] option[selected]')] == ["M"]
+    unknown = "Unlisted <size>"
+    response = client.get("/", params={"size": unknown})
+    page = BeautifulSoup(response.text, "html.parser")
     assert [option.get_text() for option in page.select('select[name="size"] option[selected]')] == [unknown]
-    assert page.select('article') == []
-    assert 'No deals match' in page.get_text()
-    assert '<size>' not in response.text
+    assert page.select("article") == []
+    assert "No deals match" in page.get_text()
+    assert "<size>" not in response.text
 
 
 def test_size_representative_ignores_hidden_sources_and_unconfirmed_stock(tmp_path):
-    from datetime import UTC
-
-    from bs4 import BeautifulSoup
-
-    config = RetailerConfig('Visible', 'example.com', ['https://example.com/collection'])
+    config = RetailerConfig("Visible", "example.com", ["https://example.com/collection"])
     catalog = replace(CYCLING, sources=(config,))
-    db = tmp_path / 'visible-sizes.db'
+    db = tmp_path / "visible-sizes.db"
     observed_at = datetime.now(UTC).isoformat()
     save_source(db, catalog.slug, config.name, observed_at, [
-        product('Visible bike', [offer('visible', size='MD'),
-                                 offer('unconfirmed', size='XL', stock='unknown')]),
-    ], 'complete', {})
-    save_source(db, catalog.slug, 'Unconfigured', observed_at, [
-        product('Hidden bike', [offer('hidden-medium', size='M'), offer('hidden-small', size='XS')]),
-    ], 'complete', {})
+        product("Visible bike", [offer("visible", size="MD"),
+                                 offer("unconfirmed", size="XL", stock="unknown")]),
+    ], "complete", {})
+    save_source(db, catalog.slug, "Unconfigured", observed_at, [
+        product("Hidden bike", [offer("hidden-medium", size="M"), offer("hidden-small", size="XS")]),
+    ], "complete", {})
     original = db.read_bytes()
     client = TestClient(create_app(catalog, db))
-    # A legacy saved-search URL must select the visible existing label, even
-    # though an unconfigured source has the shorter equivalent representative.
-    page = BeautifulSoup(client.get('/?size=Medium').text, 'html.parser')
-    assert [option.get_text() for option in page.select('select[name="size"] option')] == ['All frame sizes', 'MD']
-    assert [option.get_text() for option in page.select('select[name="size"] option[selected]')] == ['MD']
-    assert [card.select_one('h3').get_text() for card in page.select('article')] == ['Visible bike']
+    page = BeautifulSoup(client.get("/?size=Medium").text, "html.parser")
+    assert [option.get_text() for option in page.select('select[name="size"] option')] == ["All frame sizes", "MD"]
+    assert [option.get_text() for option in page.select('select[name="size"] option[selected]')] == ["MD"]
+    assert [card.select_one("h3").get_text() for card in page.select("article")] == ["Visible bike"]
     assert page.select_one('article a[href*="variant=visible"]') is not None
-    unconfirmed = BeautifulSoup(client.get('/?size=XL').text, 'html.parser')
-    assert unconfirmed.select('article') == []
-    assert [option.get_text() for option in unconfirmed.select('select[name="size"] option[selected]')] == ['XL']
+    unconfirmed = BeautifulSoup(client.get("/?size=XL").text, "html.parser")
+    assert unconfirmed.select("article") == []
+    assert [option.get_text() for option in unconfirmed.select('select[name="size"] option[selected]')] == ["XL"]
     assert db.read_bytes() == original
 
 
-@pytest.mark.parametrize(('labels', 'expected'), [
-    (['MD', 'Medium', 'MEDIUM'], ['MD']),
-    ([' S / M ', 'S/M'], ['S/M']),
-    (['50cm', '50 CM'], ['50cm']),
-    (['M18', 'M12', 'm18'], ['M12', 'M18']),
+@pytest.mark.parametrize(("labels", "expected"), [
+    (["MD", "Medium", "MEDIUM"], ["MD"]),
+    ([" S / M ", "S/M"], ["S/M"]),
+    (["50cm", "50 CM"], ["50cm"]),
+    (["M18", "M12", "m18"], ["M12", "M18"]),
 ])
 def test_size_facet_representatives_are_existing_labels_not_invented_canonical_values(labels, expected):
     rows = [source([product(offers=[offer(str(i), size=label) for i, label in enumerate(labels)])])]
-    assert query(rows, filters(), now=NOW)['facets']['size'] == expected
-    rows[0]['products'][0]['offers'].reverse()
-    assert query(rows, filters(), now=NOW)['facets']['size'] == expected
+    assert query(rows, filters(), now=NOW)["facets"]["size"] == expected
+    rows[0]["products"][0]["offers"].reverse()
+    assert query(rows, filters(), now=NOW)["facets"]["size"] == expected

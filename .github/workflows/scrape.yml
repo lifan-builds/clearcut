@@ -1,10 +1,6 @@
 name: Scrape Deals
 
 on:
-  schedule:
-    # Every eight hours; keep the existing morning slot for weekly reviews.
-    - cron: "17 5 * * *"
-    - cron: "17 13,21 * * *"
   workflow_dispatch:
     inputs:
       refresh_reviews:
@@ -65,12 +61,9 @@ jobs:
             args+=(--min-stores 20)
           fi
           snow-deals-agg refresh "${args[@]}"
-      - name: Refresh expert reviews weekly
-        if: ${{ inputs.refresh_reviews || github.event.schedule == '17 5 * * *' }}
-        run: |
-          if [ "${{ inputs.refresh_reviews }}" = "true" ] || [ "$(date -u +%u)" = "7" ]; then
-            snow-deals-agg fetch-reviews --delay 2 --max-reviews 200
-          fi
+      - name: Refresh expert reviews
+        if: ${{ inputs.refresh_reviews }}
+        run: snow-deals-agg fetch-reviews --delay 2 --max-reviews 200
       - name: Upload quality report
         if: always()
         uses: actions/upload-artifact@v4

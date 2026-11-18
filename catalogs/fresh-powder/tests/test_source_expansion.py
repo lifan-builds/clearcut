@@ -6,10 +6,14 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
-
-from aggregator.config import STORES, StoreConfig
 from aggregator.categorizer import categorize
-from aggregator.scraper import _products_to_deals, scrape_store, _clean_sizes, _extract_lengths
+from aggregator.config import STORES, StoreConfig
+from aggregator.scraper import (
+    _clean_sizes,
+    _extract_lengths,
+    _products_to_deals,
+    scrape_store,
+)
 from deal_common.parsers.shopify import ShopifyParser
 
 FEEDS = json.loads((Path(__file__).parent / 'fixtures/new_source_feeds.json').read_text())

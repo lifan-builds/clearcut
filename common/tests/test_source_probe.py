@@ -30,11 +30,11 @@ def test_probe_preserves_previous_evidence_and_uses_real_shared_refresh(tmp_path
                     [], 'incomplete', {'errors': 1})
         return [{'source': catalog.sources[0].name, 'status': 'incomplete', 'errors': 1}]
     monkeypatch.setattr(probe_sources, 'refresh', refresh)
-    candidates = [{'catalog': 'tools', 'name': 'Grizzly', 'domain': 'www.grizzly.com',
-                   'parser_type': 'grizzly', 'scrape_urls': ['https://www.grizzly.com/outlet-specials/shop-all']}]
+    candidates = [{'catalog': 'tools', 'name': 'Taylor Toolworks', 'domain': 'taytools.com',
+                   'parser_type': 'taylor', 'scrape_urls': ['https://taytools.com/power-tools?ppg=65535&pn=1']}]
     out = tmp_path / 'probe'
     rows = asyncio.run(probe_sources.probe(candidates, out, max_pages=30))
-    assert seen == [('grizzly', 30)]
+    assert seen == [('taylor', 30)]
     assert rows[0]['disposition'] == 'no-eligible-complete-snapshot'
     original = (out / 'report.json').read_text()
     with pytest.raises(ValueError, match='preserve'):

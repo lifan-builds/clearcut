@@ -7,12 +7,19 @@ from html import unescape
 from urllib.parse import urlparse
 
 from aggregator.config import (
-    CATEGORY_RULES, EXCLUDE_KEYWORDS, NOT_HARDGOODS_KEYWORDS,
-    SKI_BOOT_BRANDS, SNOWBOARD_BOOT_BRANDS,
-    SKI_MODEL_NAMES, BOOT_MODEL_NAMES, SNOWBOARD_MODEL_NAMES,
-    SKI_BOOT_MODEL_NAMES, SNOWBOARD_BOOT_MODEL_NAMES,
-    GOGGLE_MODEL_NAMES, BINDING_MODEL_NAMES,
+    BINDING_MODEL_NAMES,
+    BOOT_MODEL_NAMES,
+    CATEGORY_RULES,
+    EXCLUDE_KEYWORDS,
+    GOGGLE_MODEL_NAMES,
     MULTI_WORD_MODEL_NAMES,
+    NOT_HARDGOODS_KEYWORDS,
+    SKI_BOOT_BRANDS,
+    SKI_BOOT_MODEL_NAMES,
+    SKI_MODEL_NAMES,
+    SNOWBOARD_BOOT_BRANDS,
+    SNOWBOARD_BOOT_MODEL_NAMES,
+    SNOWBOARD_MODEL_NAMES,
 )
 
 _EXCLUSION_PATTERNS = [
@@ -116,17 +123,8 @@ def category_from_product_type(product_type: str) -> str | None:
 
 
 def _url_path(url: str) -> str:
-    """Extract just the path from a URL, ignoring the domain.
-
-    This prevents store domains like 'skiisandbiikes.com' or 'skipro.com'
-    from falsely matching the 'ski' keyword.
-    """
-    if not url:
-        return ""
-    try:
-        return urlparse(url).path
-    except Exception:
-        return url
+    """Extract just the path from a URL, ignoring the domain."""
+    return urlparse(url).path if url else ""
 
 
 def is_excluded(name: str, url: str = "") -> bool:
@@ -153,9 +151,9 @@ def is_excluded(name: str, url: str = "") -> bool:
 def exclusion_reason(name: str, url: str = '', product_type: str = '') -> str | None:
     text = f'{name} {product_type}'
     condition_text = re.sub(r'[-_/]+', ' ', f'{text} {_url_path(url)}')
-    if re.search(r'\b(?:blem|blemished|blemish)\b', condition_text, re.I):
+    if re.search(r'\b(?:blem|blemished|blemish)\b', condition_text, re.IGNORECASE):
         return 'condition'
-    if re.search(r'\b(?:juniors?|jrs?|kids?|youth|toddlers?|baby|boys?|girls?|infants?|child|children|grom|teens?)\b', text, re.I):
+    if re.search(r'\b(?:juniors?|jrs?|kids?|youth|toddlers?|baby|boys?|girls?|infants?|child|children|grom|teens?)\b', text, re.IGNORECASE):
         return 'children'
     if is_excluded(text, url):
         return 'non-snow'

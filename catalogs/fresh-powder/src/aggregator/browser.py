@@ -6,12 +6,15 @@ import asyncio
 import logging
 import math
 import random
+import re
 from urllib.parse import urljoin, urlparse
 
+from deal_common.models import Product
+from deal_common.parsers.common import clean_product_name, product_slug_words
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page, async_playwright
 
-from deal_common.parsers.common import prefix_brand_from_url
-from deal_common.models import Product
+from aggregator.reviews import _extract_brand
 
 log = logging.getLogger(__name__)
 
@@ -23,7 +26,17 @@ USER_AGENT = (
 
 VIEWPORT = {"width": 1440, "height": 900}
 
-# Shared JS price parser used by most extractors.
+_GENERIC_URL_PREFIXES = {
+    "products",
+    "product",
+    "item",
+    "shop",
+    "mens",
+    "womens",
+    "men",
+    "women",
+}
+
 _JS_PARSE_PRICE = """
 const parsePrice = (el) => {
     if (!el) return null;
@@ -32,38 +45,7 @@ const parsePrice = (el) => {
 };
 """
 
-# ---------------------------------------------------------------------------
-# Per-store extraction configs
-# ---------------------------------------------------------------------------
-# Maps store_type -> (wait_selector, js_extract, next_page_selector | None)
-# js_extract is a JS IIFE returning [{name, url, current_price, original_price}]
-
 STORE_CONFIGS: dict[str, tuple[str, str, str | None]] = {
-    "evo": (
-        ".product-thumb-details",
-        f"""() => {{
-            {_JS_PARSE_PRICE}
-            return Array.from(document.querySelectorAll('.product-thumb-details')).map(card => {{
-                const linkEl = card.querySelector('a.product-thumb-link');
-                const nameEl = card.querySelector('.product-thumb-title, [class*="product-thumb-title"]');
-                const origPriceEl = card.querySelector('.product-thumb-price.slash');
-                let salePriceEl = null;
-                card.querySelectorAll('.product-thumb-price').forEach(el => {{
-                    if (!el.classList.contains('slash')) salePriceEl = el;
-                }});
-                const imgEl = card.querySelector('img');
-                return {{
-                    name: nameEl ? nameEl.textContent.trim() : (linkEl ? linkEl.textContent.trim() : ''),
-                    url: linkEl ? linkEl.href : '',
-                    current_price: parsePrice(salePriceEl) || parsePrice(origPriceEl),
-                    original_price: parsePrice(origPriceEl),
-                    image_url: imgEl ? (imgEl.getAttribute('data-src') || imgEl.src || null) : null,
-                }};
-            }});
-        }}""",
-        'a.results-next',
-    ),
-
     "backcountry": (
         ".chakra-linkbox .price",
         """() => {
@@ -123,7 +105,6 @@ STORE_CONFIGS: dict[str, tuple[str, str, str | None]] = {
         }""",
         'a[rel="next"], a:has-text("Next Page"), .pagination .next a, [class*="next-page"]',
     ),
-
     "thehouse": (
         ".product-tile-card, [data-gtmdata]",
         """() => {
@@ -133,15 +114,12 @@ STORE_CONFIGS: dict[str, tuple[str, str, str | None]] = {
                 let data;
                 try { data = JSON.parse(t.getAttribute('data-gtmdata')); } catch(e) { return; }
                 if (!data || !data.name || !data.price || seen.has(data.name)) return;
-                // This sale listing also contains boats, bikes and camping gear.
                 if (!['ski', 'snowboard'].includes(data.category)) return;
                 if (data.dimension20 && data.dimension20 !== 'IN_STOCK') return;
                 seen.add(data.name);
                 const linkEl = t.querySelector('a[href*=".html"]');
-                // data.price is the ORIGINAL/list price; dimension4 is the sale price
                 const originalPrice = parseFloat(data.price);
                 let salePrice = data.dimension4 ? parseFloat(data.dimension4) : null;
-                // Marketing "up to" percentages do not establish an offer price.
                 const currentPrice = salePrice || originalPrice;
                 const imgEl = t.querySelector('img');
                 results.push({
@@ -155,10 +133,8 @@ STORE_CONFIGS: dict[str, tuple[str, str, str | None]] = {
             });
             return results;
         }""",
-        'button.show-more-observed-element[data-url]',
+        "button.show-more-observed-element[data-url]",
     ),
-
-    # BigCommerce stores (Corbetts, Peter Glenn, Alpine Shop VT) share the same extractor
     "bigcommerce": (
         ".card-title",
         f"""() => {{
@@ -186,171 +162,8 @@ STORE_CONFIGS: dict[str, tuple[str, str, str | None]] = {
         }}""",
         'a[rel="next"], .pagination-item--next a, .next a, .pagination .next a',
     ),
-
-    "levelnine": (
-        'script#__NEXT_DATA__',
-        """() => {
-            const el = document.getElementById('__NEXT_DATA__');
-            if (!el) return [];
-            try {
-                const data = JSON.parse(el.textContent);
-                const apollo = data.props.pageProps.__APOLLO_STATE__;
-                if (!apollo) return [];
-                const products = [];
-                for (const [key, val] of Object.entries(apollo)) {
-                    if (!key.startsWith('Product:') || !val.name) continue;
-                    // Skip products that aren't in stock (e.g. OUT_OF_STOCK).
-                    if (val.stockStatus && val.stockStatus !== 'IN_STOCK') continue;
-                    const agg = val.aggregates;
-                    if (!agg || !agg.minSalePrice) continue;
-                    const salePrice = agg.minSalePrice;
-                    const listPrice = agg.minListPrice;
-                    const url = val.url || '';
-                    const color = Array.isArray(val.colors) && val.colors[0];
-                    const imgPath = color ? (color.tileImage || color.pliImage) : null;
-                    const brand = val.brand && val.brand.name ? val.brand.name : '';
-                    products.push({
-                        name: (brand ? brand + ' ' : '') + val.name,
-                        url: url.startsWith('http') ? url : 'https://www.levelninesports.com' + url,
-                        current_price: salePrice,
-                        original_price: (listPrice && listPrice > salePrice) ? listPrice : null,
-                        image_url: imgPath ? 'https://content.backcountry.com' + imgPath : null,
-                    });
-                }
-                return products;
-            } catch(e) { return []; }
-        }""",
-        'a:has-text("Next Page")',
-    ),
-
-    "thecircle": (
-        ".prod-card[data-product-id]",
-        """() => {
-            const results = [];
-            document.querySelectorAll('.prod-card[data-product-id]').forEach(card => {
-                const img = card.querySelector('img[alt]');
-                const name = (img && img.alt !== 'Product image') ? img.alt.trim() : '';
-                const v = card.querySelector('[data-price]');
-                if (!name || !v) return;
-                const price = parseFloat(v.getAttribute('data-price'));
-                const oldPrice = parseFloat(v.getAttribute('data-old-price'));
-                if (!(price > 0)) return;
-                results.push({
-                    name, url: card.getAttribute('data-url') || '',
-                    current_price: price,
-                    original_price: (!isNaN(oldPrice) && oldPrice > 0 && oldPrice !== price) ? oldPrice : null,
-                    image_url: img ? (img.getAttribute('data-src') || img.src || null) : null,
-                });
-            });
-            return results;
-        }""",
-        'a.next, a[rel="next"], .pagination .next a',
-    ),
-
-    "sacredride": (
-        "li.product",
-        f"""() => {{
-            {_JS_PARSE_PRICE}
-            return Array.from(document.querySelectorAll('li.post-card.product, li.product')).map(card => {{
-                const linkEl = card.querySelector(
-                    'a.fusion-rollover-title-link, h4.fusion-rollover-title a, a[href*="/product/"]'
-                );
-                const nameEl = card.querySelector('h4.fusion-rollover-title, h4.fusion-title-heading, h4, h2');
-                const delEl = card.querySelector('p.price del .woocommerce-Price-amount, del .woocommerce-Price-amount');
-                const insEl = card.querySelector('p.price ins .woocommerce-Price-amount, ins .woocommerce-Price-amount');
-                const singleEl = card.querySelector('p.price .woocommerce-Price-amount, .woocommerce-Price-amount');
-                const imgEl = card.querySelector('img');
-                return {{
-                    name: nameEl ? nameEl.textContent.trim() : '',
-                    url: linkEl ? linkEl.href : '',
-                    current_price: parsePrice(insEl) || parsePrice(singleEl),
-                    original_price: parsePrice(delEl),
-                    image_url: imgEl ? (imgEl.getAttribute('data-src') || imgEl.src || null) : null,
-                }};
-            }});
-        }}""",
-        "a.next.page-numbers, a[rel='next']",
-    ),
-
-    "skiessentials": (
-        '[data-testid="product-card-title"]',
-        """() => {
-            const parsePrice = (el) => {
-                if (!el) return null;
-                const m = el.textContent.match(/[\\d,]+\\.?\\d*/);
-                return m ? parseFloat(m[0].replace(/,/g, '')) : null;
-            };
-            const seen = new Set();
-            const results = [];
-            document.querySelectorAll('.relative.border.border-gray-100').forEach(card => {
-                const linkEl = card.querySelector('a[href*="/products/"]');
-                if (!linkEl) return;
-                const href = linkEl.getAttribute('href');
-                if (seen.has(href)) return;
-                seen.add(href);
-                const nameEl = card.querySelector('[data-testid="product-card-title"]');
-                const currentEl = card.querySelector('[data-testid="product-price"]');
-                const origEl = card.querySelector('[data-testid="compare-at-price"]');
-                const imgEl = card.querySelector('img[alt]');
-                const current = parsePrice(currentEl);
-                if (!current) return;
-                results.push({
-                    name: nameEl ? nameEl.textContent.trim() : '',
-                    url: linkEl.href || '',
-                    current_price: current,
-                    original_price: parsePrice(origEl),
-                    image_url: imgEl ? (imgEl.src || null) : null,
-                });
-            });
-            return results;
-        }""",
-        'button:has-text("SHOW MORE")',
-    ),
-
-    "rei": (
-        '[data-ui="product-title"]',
-        """() => {
-            const seen = new Set();
-            const results = [];
-            document.querySelectorAll('[data-ui="product-title"]').forEach(titleEl => {
-                let card = titleEl;
-                while (card && card.tagName !== 'LI') card = card.parentElement;
-                if (!card) return;
-                const linkEl = card.querySelector('a[href*="/product/"]');
-                if (!linkEl) return;
-                const href = linkEl.getAttribute('href');
-                if (seen.has(href)) return;
-                seen.add(href);
-                const brandEl = card.querySelector('[data-ui="product-brand"]');
-                const name = ((brandEl ? brandEl.textContent.trim() + ' ' : '') + titleEl.textContent.trim()).trim();
-                const spans = card.querySelectorAll('span');
-                let currentPrice = null;
-                let originalPrice = null;
-                for (const span of spans) {
-                    const text = span.textContent.trim();
-                    if (text.match(/^\\$[\\d,.]+$/)) {
-                        const price = parseFloat(text.replace(/[$,]/g, ''));
-                        if (!currentPrice) currentPrice = price;
-                        else if (!originalPrice) originalPrice = price;
-                    }
-                }
-                const imgEl = card.querySelector('img[id^="image-"]');
-                if (!currentPrice) return;
-                results.push({
-                    name,
-                    url: linkEl.href.startsWith('http') ? linkEl.href : 'https://www.rei.com' + href,
-                    current_price: currentPrice,
-                    original_price: originalPrice,
-                    image_url: imgEl ? imgEl.src : null,
-                });
-            });
-            return results;
-        }""",
-        None,  # Rely on _try_next_page fallback which handles ?page=N URL patterns
-    ),
-
     "mec": (
-        'script#__NEXT_DATA__',
+        "script#__NEXT_DATA__",
         """() => {
             const el = document.getElementById('__NEXT_DATA__');
             if (!el) return [];
@@ -364,7 +177,6 @@ STORE_CONFIGS: dict[str, tuple[str, str, str | None]] = {
                         const urlPath = hit.url || '';
                         const salePrice = hit.salePrice;
                         if (!title || !urlPath || !salePrice || salePrice <= 0) continue;
-                        // Skip items that aren't available (e.g. OUT_OF_STOCK / NO_INVENTORY).
                         const invStatus = hit.inventoryStatus;
                         if (invStatus && invStatus !== 'IN_STOCK' && invStatus !== 'LOW_STOCK') continue;
                         const price = hit.price;
@@ -380,22 +192,42 @@ STORE_CONFIGS: dict[str, tuple[str, str, str | None]] = {
                 return products;
             } catch(e) { return []; }
         }""",
-        '.ais-Pagination-item--nextPage a',
+        ".ais-Pagination-item--nextPage a",
     ),
 }
 
-# Aliases — stores sharing the same extraction logic
 STORE_CONFIGS["corbetts"] = STORE_CONFIGS["bigcommerce"]
 STORE_CONFIGS["peterglenn"] = STORE_CONFIGS["bigcommerce"]
-STORE_CONFIGS["alpineshopvt"] = STORE_CONFIGS["bigcommerce"]
 
-# Anti-bot stores need longer timeouts
-_ANTI_BOT_TYPES = {"evo", "backcountry", "levelnine", "corbetts", "rei", "mec", "thehouse"}
+_ANTI_BOT_TYPES = {"backcountry", "corbetts", "mec", "thehouse"}
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+def prefix_brand_from_url(name: str | None, url: str) -> str:
+    """Prefix a model-only name with the URL's leading brand slug when safe."""
+    cleaned = clean_product_name(name, url)
+    if not cleaned:
+        return ""
+
+    words = product_slug_words(url)
+    while words and re.fullmatch(r"20\d{2}", words[0]):
+        words = words[1:]
+    if len(words) < 2:
+        return cleaned
+
+    slug_name = " ".join(words).lower()
+    candidate = _extract_brand(slug_name)
+    if not candidate or not slug_name.startswith(candidate + " "):
+        return cleaned
+    name_lower = cleaned.lower()
+    if candidate in _GENERIC_URL_PREFIXES or name_lower.startswith(candidate + " "):
+        return cleaned
+
+    rest = {w.lower() for w in words[1:] if len(w) > 2}
+    name_words = set(re.findall(r"[a-z0-9]+", name_lower))
+    if not rest.intersection(name_words):
+        return cleaned
+
+    return f"{candidate.title()} {cleaned}"
 
 
 def _parse_raw_products(raw: list[dict], base_url: str) -> list[Product]:
@@ -449,7 +281,6 @@ async def _try_next_page(page: Page, next_selector: str | None) -> bool:
     """Attempt to navigate to the next page. Returns True if navigation happened."""
     if next_selector == "":
         return False
-    # Try explicit CSS selectors first
     for selector in (next_selector or "").split(","):
         selector = selector.strip()
         if not selector:
@@ -469,46 +300,27 @@ async def _try_next_page(page: Page, next_selector: str | None) -> bool:
                 await page.goto(target, wait_until="domcontentloaded")
                 return True
             if href and href.startswith("#"):
-                # SPA hash navigation — click via JS (may be off-screen) and wait
                 await el.evaluate("el => el.click()")
                 await asyncio.sleep(3.0)
                 return True
             if await el.is_visible():
                 if href:
-                    # Resolve relative URLs via the element's .href property
                     abs_href = await el.evaluate("el => el.href")
                     if abs_href == page.url:
                         continue
                     await page.goto(abs_href or href, wait_until="domcontentloaded")
                     return True
-                before_count = await page.locator('[data-testid="product-card-title"]').count() if 'SHOW MORE' in selector else None
-                if before_count is not None and urlparse(page.url).hostname in {"skiessentials.com", "www.skiessentials.com"}:
-                    # The retailer's newsletter modal intercepts Show More clicks.
-                    # Dismiss only its observed close control, never force the
-                    # pagination click through an unknown overlay.
-                    close = await page.query_selector(
-                        '[role="dialog"][aria-label="POPUP Form"] button[aria-label="Close dialog"]'
-                    )
-                    if close and await close.is_visible():
-                        await close.click()
                 await el.click()
-                if before_count is not None:
-                    await page.wait_for_function(
-                        "count => document.querySelectorAll('[data-testid=product-card-title]').length > count",
-                        arg=before_count, timeout=20000,
-                    )
                 await page.wait_for_load_state("domcontentloaded")
                 return True
-        except Exception as exc:
+        except (PlaywrightError, RuntimeError, ValueError, TypeError, OSError) as exc:
             raise RuntimeError("Next-page navigation failed") from exc
 
-    # Fallback: find "Next Page" text link or next page number in pagination
     try:
         next_url = await page.evaluate("""() => {
             const current = new URL(window.location.href);
             const basePath = path => path.replace(/\\/page\\d+(?:\\.html)?\\/?$/, '').replace(/\\/$/, '');
             const sameCollection = target => target.origin === current.origin && basePath(target.pathname) === basePath(current.pathname);
-            // Try "Next Page" text link
             for (const a of document.querySelectorAll('a')) {
                 const txt = a.textContent.trim().toLowerCase();
                 if ((txt === 'next page' || txt === 'next' || txt === '›' || txt === '»')
@@ -517,7 +329,6 @@ async def _try_next_page(page: Page, next_selector: str | None) -> bool:
                     return a.href;
                 }
             }
-            // Try page number links: find current page and get next
             const currentUrl = window.location.href;
             const pageMatch = currentUrl.match(/[?&]page=(\\d+)|\\/page(\\d+)/);
             const currentPage = pageMatch ? parseInt(pageMatch[1] || pageMatch[2]) : 1;
@@ -537,15 +348,10 @@ async def _try_next_page(page: Page, next_selector: str | None) -> bool:
         if next_url:
             await page.goto(next_url, wait_until="domcontentloaded")
             return True
-    except Exception as exc:
+    except (PlaywrightError, RuntimeError, ValueError, TypeError, OSError) as exc:
         raise RuntimeError("Next-page navigation failed") from exc
 
     return False
-
-
-# ---------------------------------------------------------------------------
-# Main entry point
-# ---------------------------------------------------------------------------
 
 
 async def scrape_with_browser(
@@ -603,7 +409,7 @@ async def scrape_with_browser(
                         outcome["errors"] += 1
                         collection.update(status="unexpected_redirect", final_url=page.url)
                         continue
-                except Exception as exc:
+                except (PlaywrightError, RuntimeError, ValueError, OSError) as exc:
                     outcome["errors"] += 1
                     collection["status"] = "navigation_error"
                     log.error("[%s] Failed to load %s: %s", store_name, url, exc)
@@ -614,10 +420,9 @@ async def scrape_with_browser(
 
                 for page_num in range(1, max_pages + 1):
                     try:
-                        # Use "attached" state for non-visible elements (e.g. <script>)
                         wait_state = "attached" if wait_selector.startswith("script") else "visible"
                         await page.wait_for_selector(wait_selector, timeout=selector_timeout, state=wait_state)
-                    except Exception:
+                    except (PlaywrightError, OSError):
                         outcome["errors"] += 1
                         collection["status"] = "selector_missing"
                         log.warning("[%s] Timeout waiting for products (page %d)", store_name, page_num)
@@ -627,7 +432,7 @@ async def scrape_with_browser(
 
                     try:
                         raw: list[dict] = await page.evaluate(js_extract)
-                    except Exception as exc:
+                    except (PlaywrightError, RuntimeError, ValueError, TypeError) as exc:
                         outcome["errors"] += 1
                         collection["status"] = "extraction_error"
                         log.error("[%s] JS extraction error: %s", store_name, exc)
@@ -672,7 +477,7 @@ async def scrape_with_browser(
             await context.close()
             await browser.close()
 
-    except Exception as exc:
+    except (PlaywrightError, RuntimeError, ValueError, OSError) as exc:
         outcome["errors"] += 1
         log.error("[%s] Browser scraping failed: %s", store_name, exc)
 

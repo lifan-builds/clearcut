@@ -2,12 +2,17 @@
 import asyncio
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
-
 from aggregator.categorizer import categorize, exclusion_reason
-from aggregator.db import get_brands, get_category_counts, init_db, query_deals, upsert_deals
+from aggregator.db import (
+    get_brands,
+    get_category_counts,
+    init_db,
+    query_deals,
+    upsert_deals,
+)
 from aggregator.models import AggregatedDeal
 from aggregator.scraper import _products_to_deals
 from deal_common.parsers.shopify import ShopifyParser, product_type_from_item
@@ -94,7 +99,7 @@ def deal(name='Mystery Model', product_type='Accessories', category='accessories
     return AggregatedDeal(id=None, store='Fixture', name=name, url='https://store.example/item',
                           current_price=50, original_price=100, discount_pct=50,
                           category=category, sizes=None, length_min=None, length_max=None,
-                          scraped_at=datetime.now(timezone.utc).replace(tzinfo=None),
+                          scraped_at=datetime.now(UTC).replace(tzinfo=None),
                           brand='fixture', product_type=product_type)
 
 
@@ -135,23 +140,6 @@ def test_reviewed_exclusion_survives_opaque_feed_and_all_public_filters(tmp_path
     asyncio.run(run())
 
 
-def test_offline_audit_requires_matching_title_and_preserves_source(tmp_path):
-    from scripts.audit_categories import audit
-    source = tmp_path / 'source.db'
-    asyncio.run(init_db(source))
-    asyncio.run(upsert_deals([deal(product_type=None, category=None)], source))
-    original = source.read_bytes()
-    target = tmp_path / 'audited.db'
-    metadata = {'https://store.example/item': {'name': 'Different Product', 'product_type': 'Skis', 'source': 'https://store.example/feed'}}
-    summary = audit(source, target, metadata, tmp_path / 'reports')
-    assert summary['metadata_matches_current'] == 0
-    assert summary['metadata_matches_all_rows'] == 0
-    assert summary['unresolved_current'] == 1
-    assert source.read_bytes() == original
-    with pytest.raises(ValueError):
-        audit(source, target, {}, tmp_path / 'reports')
-
-
 def test_snapshot_repair_does_not_import_scraping_package(tmp_path):
     """Vercel build imports only aggregator DB helpers; no scraper or HTML parsers."""
     import subprocess
@@ -172,5 +160,5 @@ path = Path(sys.argv[2])
 asyncio.run(init_db(path))
 assert asyncio.run(repair_deal_categories(path)) == 0
 '''
-    result = subprocess.run([sys.executable, '-I', '-c', code, str(package_root), str(tmp_path / 'build.db')], capture_output=True, text=True)
+    result = subprocess.run([sys.executable, '-I', '-c', code, str(package_root), str(tmp_path / 'build.db')], check=False, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr

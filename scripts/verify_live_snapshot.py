@@ -17,8 +17,8 @@ def verify(url: str, expected: str, timeout: int = 600) -> bool:
             if result.get("status") == "ok" and observed and datetime.fromisoformat(observed) >= datetime.fromisoformat(expected):
                 print(f"Production snapshot verified: {observed}")
                 return True
-        except Exception:
-            pass
+        except (OSError, ValueError) as exc:
+            print(f"Snapshot check pending: {exc}")
         time.sleep(15)
     print("Production did not serve the expected snapshot before the deadline.")
     return False

@@ -1,17 +1,22 @@
 """Regression fixtures from the November source-quality audit."""
 import asyncio
 import json
+from datetime import UTC
 
 import httpx
 import pytest
-
 from aggregator.browser import _parse_raw_products
 from aggregator.categorizer import categorize, exclusion_reason, is_excluded
 from aggregator.config import StoreConfig
 from aggregator.parsers.bluezone import BlueZoneParser
 from aggregator.parsers.coloradodiscount import ColoradoDiscountParser
 from aggregator.parsers.sacredride import SacredRideParser
-from aggregator.scraper import _products_to_deals, build_scrape_report, protect_partial_snapshots, scrape_store
+from aggregator.scraper import (
+    _products_to_deals,
+    build_scrape_report,
+    protect_partial_snapshots,
+    scrape_store,
+)
 from deal_common.models import Product
 from deal_common.parsers.shopify import ShopifyParser
 
@@ -49,8 +54,9 @@ def test_demo_binding_design_is_not_used_condition():
 
 def test_snapshot_repair_excludes_blem_without_rewriting_observation(tmp_path):
     import sqlite3
-    from datetime import datetime, timezone
-    from aggregator.db import init_db, upsert_deals, repair_deal_categories, query_deals
+    from datetime import datetime
+
+    from aggregator.db import init_db, query_deals, repair_deal_categories, upsert_deals
     from aggregator.models import AggregatedDeal
 
     path = tmp_path / 'public-snapshot.db'
@@ -59,7 +65,7 @@ def test_snapshot_repair_excludes_blem_without_rewriting_observation(tmp_path):
                          url='https://shop.example/nexus', current_price=300,
                          original_price=750, discount_pct=60, category='skis',
                          sizes=None, length_min=None, length_max=None,
-                         scraped_at=datetime.now(timezone.utc).replace(tzinfo=None))
+                         scraped_at=datetime.now(UTC).replace(tzinfo=None))
     asyncio.run(upsert_deals([row], path))
     with sqlite3.connect(path) as db:
         db.execute("UPDATE deals SET name = 'Season Nexus Skis - Blem 2025'")
@@ -108,7 +114,8 @@ def test_real_product_categories(name, expected):
 def test_snapshot_category_repair_preserves_prices_and_freshness(tmp_path):
     import sqlite3
     from datetime import datetime
-    from aggregator.db import init_db, upsert_deals, repair_deal_categories
+
+    from aggregator.db import init_db, repair_deal_categories, upsert_deals
     from aggregator.models import AggregatedDeal
     path = tmp_path / 'public-snapshot.db'
     asyncio.run(init_db(path))
@@ -175,13 +182,13 @@ def test_shopify_page_ten_is_not_a_silent_limit():
 
 
 def test_colors_are_not_sizes():
-    item = dict(title='Atomic Skis', handle='skis', options=[{'name':'Color'}], variants=[dict(price='300', compare_at_price='600', option1='Ocean Blue')])
+    item = {"title": 'Atomic Skis', "handle": 'skis', "options": [{'name':'Color'}], "variants": [{"price": '300', "compare_at_price": '600', "option1": 'Ocean Blue'}]}
     p = ShopifyParser().parse_listing_page(json.dumps({'products':[item]}), 'https://store.test/products.json')[0]
     assert p.sizes is None
 
 
 def test_browser_fields_and_invalid_records():
-    good = dict(name='Atomic Skis', url='/ski', current_price='300', original_price='600', image_url='//cdn.test/ski.jpg', sizes=['170cm'], brand='Atomic', product_type='Skis')
+    good = {"name": 'Atomic Skis', "url": '/ski', "current_price": '300', "original_price": '600', "image_url": '//cdn.test/ski.jpg', "sizes": ['170cm'], "brand": 'Atomic', "product_type": 'Skis'}
     raw = [good, {**good, 'current_price':'NaN'}, {**good, 'current_price':'oops'}, {**good, 'url':''}, {**good, 'url':'javascript:alert(1)'}]
     products = _parse_raw_products(raw, 'https://store.test')
     assert len(products) == 1
@@ -241,10 +248,9 @@ def test_refresh_does_not_persist_partial_source_or_renew_its_history(
     from functools import partial
 
     import aggregator.cli as module
+    from aggregator import db
     from click.testing import CliRunner
     from deal_common.offers import VariantOffer
-
-    from aggregator import db
 
     path = tmp_path / 'refresh.db'
     old_time = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=1)
@@ -323,7 +329,7 @@ def test_collection_errors_preserve_other_valid_products(monkeypatch):
     async def no_sleep(_): pass
     monkeypatch.setattr('aggregator.scraper.asyncio.sleep', no_sleep)
     async def run():
-        item = dict(title='Atomic Skis',handle='ski',variants=[dict(price='300',compare_at_price='600')])
+        item = {"title": 'Atomic Skis',"handle": 'ski',"variants": [{"price": '300',"compare_at_price": '600'}]}
         def handler(request):
             if '/bad/' in str(request.url):
                 return httpx.Response(200,text='<html>Challenge</html>')
@@ -364,13 +370,21 @@ def test_browser_failed_pagination_is_not_reported_as_complete():
 
 
 def test_filter_counts_exclude_stale_and_historical_rows(tmp_path):
-    from datetime import datetime, timedelta
-    from aggregator.db import init_db, upsert_deals, get_brands, get_category_counts, count_with_length, query_deals
+    from datetime import UTC, datetime, timedelta
+
+    from aggregator.db import (
+        count_with_length,
+        get_brands,
+        get_category_counts,
+        init_db,
+        query_deals,
+        upsert_deals,
+    )
     async def run():
         path = tmp_path / 'counts.db'
         await init_db(path)
         deals = _products_to_deals([Product('Atomic Skis','https://s.test/old',100,200,['170cm'],brand='Atomic')], 'Old')
-        deals[0].scraped_at = datetime.utcnow() - timedelta(hours=25)
+        deals[0].scraped_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=25)
         await upsert_deals(deals,path)
         assert await get_brands(path) == []
         assert await get_category_counts(path) == {}
@@ -397,7 +411,7 @@ def test_manual_page_offsets_do_not_trigger_auto_pagination():
 
 
 def test_brand_recovery_preserves_numeric_and_multiword_brands():
-    from deal_common.parsers.common import prefix_brand_from_url
+    from aggregator.browser import prefix_brand_from_url
     assert prefix_brand_from_url('686 GORE-TEX Core Pant', 'https://s.test/686-gore-tex-core-pant') == '686 GORE-TEX Core Pant'
     assert prefix_brand_from_url('Sogn Bib Pant', 'https://s.test/helly-hansen-sogn-bib-pant') == 'Helly Hansen Sogn Bib Pant'
     assert prefix_brand_from_url('Knit Top', 'https://s.test/cashmere-knit-top') == 'Knit Top'
@@ -421,14 +435,18 @@ def test_flat_skis_and_compact_length_lists():
 def test_real_pagination_javascript(current, links, expected):
     import shutil
     import subprocess
+
     from aggregator.browser import _try_next_page
     if not shutil.which('node'):
         pytest.skip('Node is needed to execute the browser selector fixture')
+    def eval_in_node(script: str):
+        setup = 'const window={location:new URL(' + json.dumps(current) + ')};'
+        setup += 'const links=' + json.dumps(links) + ';const document={querySelectorAll:()=>links.map(href=>({href,textContent:"",getAttribute:()=>null}))};'
+        return json.loads(subprocess.check_output(['node', '-e', setup + 'console.log(JSON.stringify((' + script + ')()))'], text=True))
+
     class Page:
         async def evaluate(self, script):
-            setup = 'const window={location:new URL(' + json.dumps(current) + ')};'
-            setup += 'const links=' + json.dumps(links) + ';const document={querySelectorAll:()=>links.map(href=>({href,textContent:"",getAttribute:()=>null}))};'
-            return json.loads(subprocess.check_output(['node','-e',setup+'console.log(JSON.stringify(('+script+')()))'],text=True))
+            return eval_in_node(script)
         async def goto(self,url,**kwargs): self.destination=url
     async def run():
         page = Page()
@@ -442,8 +460,8 @@ def test_metadata_can_identify_generic_snow_boot_titles():
 
 
 def test_targeted_refresh_uses_only_selected_store_baseline(monkeypatch, tmp_path):
-    from click.testing import CliRunner
     import aggregator.cli as module
+    from click.testing import CliRunner
     store = 'Fresh Skis'
     selected = {}
     deals = _products_to_deals([Product('Atomic Skis','https://s.test/atomic',300,600)],store)

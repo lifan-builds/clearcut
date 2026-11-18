@@ -17,7 +17,8 @@ cookies.json
 .mcp.json
 .playwright-mcp/
 
-# Local package verification artifacts
+# Local package verification and media artifacts
 build/
 dist/
-.local/verification/
+media/
+.local/

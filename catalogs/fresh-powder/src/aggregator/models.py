@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import re
-from deal_common.offers import VariantOffer
+from dataclasses import dataclass, field
 from datetime import datetime
+
+from deal_common.offers import VariantOffer
 
 
 def model_year(name: str) -> int | None:

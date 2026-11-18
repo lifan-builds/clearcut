@@ -27,7 +27,7 @@ def extract_lengths(sizes_str: str | None) -> tuple[int | None, int | None]:
 def matches_length(sizes: str | None, lower: int | None, upper: int | None) -> bool:
     """Match a listed discrete length, never an invented value inside its envelope."""
     for token in (sizes or '').split(','):
-        match = re.fullmatch(r"\s*(\d{3})\s*(?:cm|w|wide)?\s*", token, re.I)
+        match = re.fullmatch(r"\s*(\d{3})\s*(?:cm|w|wide)?\s*", token, re.IGNORECASE)
         if match:
             value = int(match[1])
             if 100 <= value <= 220 and (lower is None or value >= lower) and (upper is None or value <= upper):

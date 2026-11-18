@@ -10,8 +10,8 @@ are pushed via .sync().
 
 from __future__ import annotations
 
-import logging
 import json
+import logging
 import os
 import secrets
 import sqlite3
@@ -142,8 +142,8 @@ async def create_invite_codes(codes: list[str], max_uses: int = 5) -> int:
                 (code, now, max_uses),
             )
             created += 1
-        except (sqlite3.IntegrityError, Exception) as e:
-            if "UNIQUE" in str(e) or "IntegrityError" in type(e).__name__:
+        except (sqlite3.IntegrityError, ValueError) as e:
+            if isinstance(e, sqlite3.IntegrityError) or "UNIQUE" in str(e):
                 continue
             raise
     conn.commit()
@@ -343,8 +343,8 @@ async def add_to_waitlist(email: str) -> bool:
         conn.commit()
         _sync()
         return True
-    except (sqlite3.IntegrityError, Exception) as e:
-        if "UNIQUE" in str(e) or "IntegrityError" in type(e).__name__:
+    except (sqlite3.IntegrityError, ValueError) as e:
+        if isinstance(e, sqlite3.IntegrityError) or "UNIQUE" in str(e):
             return False
         raise
 

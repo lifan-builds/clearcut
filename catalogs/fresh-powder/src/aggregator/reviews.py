@@ -47,7 +47,6 @@ OGL_CATEGORY_URLS = [
     # Additional categories
     "/topics/snow-sports/best-ski-gear",
     "/topics/snow-sports/best-ski-pants",
-    "/topics/snow-sports/best-ski-socks",
     "/topics/snow-sports/best-splitboard-bindings",
     "/topics/snow-sports/best-splitboard-skins",
     "/topics/snow-sports/best-avalanche-beacon",
@@ -55,7 +54,6 @@ OGL_CATEGORY_URLS = [
     "/topics/snow-sports/best-climbing-skins",
     "/topics/snow-sports/best-snowshoes",
     "/topics/snow-sports/best-snowshoes-womens",
-    "/topics/snow-sports/best-snowboard-womens",
 ]
 
 OGL_BASE = "https://www.outdoorgearlab.com"
@@ -591,7 +589,13 @@ def _extract_brand(name: str) -> str:
     # Check model-to-brand lookup before falling back to first word
     if first in _MODEL_TO_BRAND:
         return _MODEL_TO_BRAND[first]
-    from aggregator.config import SKI_BRANDS, SNOWBOARD_BRANDS, BOOT_BRANDS, SKI_BOOT_BRANDS, SNOWBOARD_BOOT_BRANDS
+    from aggregator.config import (
+        BOOT_BRANDS,
+        SKI_BOOT_BRANDS,
+        SKI_BRANDS,
+        SNOWBOARD_BOOT_BRANDS,
+        SNOWBOARD_BRANDS,
+    )
     known = SKI_BRANDS | SNOWBOARD_BRANDS | BOOT_BRANDS | SKI_BOOT_BRANDS | SNOWBOARD_BOOT_BRANDS | {
         "patagonia", "mammut", "oakley", "smith", "giro", "anon", "poc", "dakine", "hestra", "swix",
         "flylow", "picture", "spyder", "obermeyer", "burton", "volcom", "roxy", "quiksilver", "686",
@@ -635,8 +639,9 @@ async def compute_and_store_deal_reviews(db_path=None) -> int:
     Should be called after upsert_deals() or upsert_reviews() so results stay fresh.
     Returns the number of matches stored.
     """
-    from aggregator.db import get_all_reviews, upsert_deal_reviews, DB_PATH
     import aiosqlite
+
+    from aggregator.db import DB_PATH, get_all_reviews, upsert_deal_reviews
 
     if db_path is None:
         db_path = DB_PATH

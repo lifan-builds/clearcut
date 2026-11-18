@@ -153,7 +153,7 @@ def main() -> int:
         identity = write_snapshot_bundle(DB_DEST)
         archive_bytes = DB_DEST.with_name(DB_DEST.name + '.gz').stat().st_size
         log(f"Bundled exact snapshot: {identity['bytes']} bytes -> {archive_bytes} compressed bytes")
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
         print(f"[vercel_build] ERROR: {exc}", file=sys.stderr, flush=True)
         return 1
     return 0

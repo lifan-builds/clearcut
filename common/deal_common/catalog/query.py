@@ -2,7 +2,7 @@
 from datetime import UTC, datetime, timedelta
 from math import ceil
 
-from deal_common.catalog.identity import manufacturer_name
+from deal_common.catalog.definition import manufacturer_name
 from deal_common.offers import discount, size_key
 
 PAGE_SIZE = 24
@@ -50,8 +50,8 @@ def query(sources: list[dict], filters: dict, *, now: datetime | None = None,
             if filters.get("store") and filters["store"] != source["name"]:
                 continue
             if filters.get("q"):
-                search_texts = (product["name"] + " " + product["brand"], product["name"] + " " + brand)
-                if not any(filters["q"].casefold() in text.casefold() for text in search_texts):
+                needle = filters["q"].casefold()
+                if not any(needle in (product["name"] + " " + b).casefold() for b in (product["brand"], brand)):
                     continue
             eligible = []
             for offer in product["offers"]:
@@ -73,7 +73,6 @@ def query(sources: list[dict], filters: dict, *, now: datetime | None = None,
             best = min(eligible, key=lambda o: (-o["discount"], -o["savings"], o["current_price"], o["variant_key"]))
             cards.append({**product, "brand": brand, "offer": best, "store": source["name"],
                           "observed_at": source["successful_at"], "matching_variants": len(eligible)})
-    # Keep one existing label for each match the current size_key already defines.
     size_labels = {}
     for label in sorted(facets["size"], key=lambda value: (len(value), value.casefold(), value)):
         size_labels.setdefault(size_key(label), label)

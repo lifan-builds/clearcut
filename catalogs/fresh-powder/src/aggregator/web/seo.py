@@ -1,6 +1,13 @@
-"""Small, crawlable category directory and shared page metadata."""
+"""Small, crawlable category directory, shared page metadata, and Jinja templates."""
+
+from __future__ import annotations
 
 import os
+from pathlib import Path
+
+from fastapi.templating import Jinja2Templates
+
+from aggregator.comparisons import comparison_path
 
 CATEGORIES = {
     "skis": (
@@ -35,12 +42,14 @@ CATEGORIES = {
     ),
 }
 
+TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
-def site_url():
+
+def site_url() -> str:
     return os.environ.get("SITE_URL", "https://snow-deal.vercel.app").rstrip("/")
 
 
-def page_context(request):
+def page_context(request) -> dict:
     path = request.url.path
     private = path.startswith(("/admin", "/invite", "/alerts/remove", "/deals"))
     return {
@@ -53,3 +62,8 @@ def page_context(request):
         },
         "seo_categories": CATEGORIES,
     }
+
+
+templates = Jinja2Templates(directory=str(TEMPLATE_DIR), context_processors=[page_context])
+templates.env.auto_reload = True
+templates.env.globals["comparison_path"] = comparison_path

@@ -3,21 +3,33 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import json
+import logging
 import os
 from dataclasses import asdict
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import click
 from rich.console import Console
 from rich.table import Table
 
-from aggregator.db import init_db, query_deals, upsert_deals, upsert_reviews, save_scrape_run, store_status
-from aggregator.auth_db import init_auth_db, create_invite_codes, list_invite_codes
-from aggregator.scraper import build_scrape_report, scrape_all, protect_partial_snapshots
+from aggregator.auth_db import create_invite_codes, init_auth_db, list_invite_codes
 from aggregator.config import STORES
+from aggregator.db import (
+    init_db,
+    query_deals,
+    save_scrape_run,
+    store_status,
+    upsert_deals,
+    upsert_reviews,
+)
+from aggregator.scraper import (
+    build_scrape_report,
+    protect_partial_snapshots,
+    scrape_all,
+)
+from aggregator.wordlist import generate_readable_code
 
 console = Console()
 
@@ -61,6 +73,22 @@ def _print_scrape_report(deals: list, stores=None) -> None:
         console.print("[red]Zero-count stores:[/red] " + ", ".join(report.zero_count_stores))
 
 
+def _append_step_summary(deals: list, quality, outcomes: dict, withheld: list[str]) -> None:
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not summary_path:
+        return
+    partial = [name for name, result in outcomes.items() if result.get("errors")]
+    with Path(summary_path).open("a", encoding="utf-8") as summary:
+        summary.write(
+            f"## Scrape quality\n{len(deals)} unique deals across {quality.stores_with_deals}/{quality.configured_stores} stores.\n\n"
+            f"Unavailable: {', '.join(quality.zero_count_stores) or 'none'}.\n\n"
+            f"Incomplete collections: {', '.join(partial) or 'none'}.\n\n"
+            f"Retained previous snapshot without changing its age: {', '.join(withheld) or 'none'}.\n"
+        )
+    if partial or quality.zero_count_stores:
+        console.print("::warning::Some retailer collections are incomplete; see scrape quality report.")
+
+
 @click.group()
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging.")
 def cli(verbose: bool) -> None:
@@ -83,7 +111,7 @@ def refresh(delay: float, max_pages: int, min_stores: int, report: str | None, s
         await init_db()
         selected = [s for s in STORES if not store_names or s.name in store_names]
         selected_names = {s.name for s in selected}
-        cutoff = datetime.utcnow() - timedelta(hours=72)
+        cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=72)
         previous_counts = {
             row["store"]: row["deal_count"] for row in await store_status()
             if row["store"] in selected_names and
@@ -98,7 +126,7 @@ def refresh(delay: float, max_pages: int, min_stores: int, report: str | None, s
 
         quality = build_scrape_report(deals, selected)
         publish_deals, withheld = protect_partial_snapshots(deals, previous_counts, outcomes)
-        checked_at = datetime.utcnow().isoformat()
+        checked_at = datetime.now(UTC).replace(tzinfo=None).isoformat()
         payload = {**asdict(quality), "checked_at": checked_at, "outcomes": outcomes,
                    "withheld_stores": withheld, "published_deals": len(publish_deals),
                    "publish_candidate_quality": asdict(build_scrape_report(publish_deals, selected))}
@@ -112,26 +140,19 @@ def refresh(delay: float, max_pages: int, min_stores: int, report: str | None, s
             raise click.ClickException("More than 10% of deals are uncategorized; snapshot not published.")
         if len({d.store for d in publish_deals}) < min_stores:
             raise click.ClickException("Too few reliable store snapshots after partial-source checks; snapshot not published.")
-        if deals:
-            count = await upsert_deals(publish_deals)
-            await save_scrape_run(quality, outcomes, checked_at)
-            from aggregator.reviews import compute_and_store_deal_reviews
-            await compute_and_store_deal_reviews()
-            if os.environ.get("GITHUB_STEP_SUMMARY"):
-                partial = [name for name, result in outcomes.items() if result.get("errors")]
-                with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
-                    summary.write(f"## Scrape quality\n{len(deals)} unique deals across {quality.stores_with_deals}/{quality.configured_stores} stores.\n\nUnavailable: {', '.join(quality.zero_count_stores) or 'none'}.\n\nIncomplete collections: {', '.join(partial) or 'none'}.\n")
-                    summary.write(f"\nRetained previous snapshot without changing its age: {', '.join(withheld) or 'none'}.\n")
-                if partial or quality.zero_count_stores:
-                    console.print("::warning::Some retailer collections are incomplete; see scrape quality report.")
-            console.print(f"[green]Saved {count} deals to database.[/green]")
+        count = await upsert_deals(publish_deals)
+        await save_scrape_run(quality, outcomes, checked_at)
+        from aggregator.reviews import compute_and_store_deal_reviews
+        await compute_and_store_deal_reviews()
+        _append_step_summary(deals, quality, outcomes, withheld)
+        console.print(f"[green]Saved {count} deals to database.[/green]")
 
     asyncio.run(_run())
 
 
 def _reviews_to_rows(reviews: list) -> list[dict]:
     """Convert ReviewData list to dicts for DB upsert."""
-    from datetime import datetime
+    now = datetime.now(UTC).replace(tzinfo=None).isoformat()
     return [
         {
             "product_name": r.product_name,
@@ -140,7 +161,7 @@ def _reviews_to_rows(reviews: list) -> list[dict]:
             "award": r.award,
             "review_url": r.url,
             "category": r.category,
-            "scraped_at": datetime.now().isoformat(),
+            "scraped_at": now,
         }
         for r in reviews
     ]
@@ -154,7 +175,11 @@ def _reviews_to_rows(reviews: list) -> list[dict]:
               help="Max reviews to scrape (TGR only, for testing).")
 def fetch_reviews(delay: float, source: str, max_reviews: int | None) -> None:
     """Scrape product review scores from review sites."""
-    from aggregator.reviews import scrape_reviews, scrape_tgr_reviews
+    from aggregator.reviews import (
+        compute_and_store_deal_reviews,
+        scrape_reviews,
+        scrape_tgr_reviews,
+    )
 
     async def _run() -> None:
         await init_db()
@@ -181,7 +206,6 @@ def fetch_reviews(delay: float, source: str, max_reviews: int | None) -> None:
         console.print(f"[bold green]Total: {total} reviews saved to database.[/bold green]")
 
         with console.status("[bold cyan]Computing review matches...", spinner="dots"):
-            from aggregator.reviews import compute_and_store_deal_reviews
             matched = await compute_and_store_deal_reviews()
         console.print(f"[green]Matched {matched} deals to reviews.[/green]")
 
@@ -192,17 +216,7 @@ def fetch_reviews(delay: float, source: str, max_reviews: int | None) -> None:
 @click.argument("count", type=int, default=10)
 def generate_codes(count: int) -> None:
     """Generate invite codes. Usage: snow-deals-agg generate-codes 10"""
-    import random
-    import secrets
-    from aggregator.wordlist import SNOW_WORDS
-
-    def _readable_code() -> str:
-        word1 = random.choice(SNOW_WORDS)
-        word2 = random.choice(SNOW_WORDS)
-        num = secrets.randbelow(90) + 10
-        return f"{word1}-{word2}-{num}"
-
-    codes = [_readable_code() for _ in range(count)]
+    codes = [generate_readable_code() for _ in range(count)]
 
     async def _run() -> None:
         await init_auth_db()
@@ -219,7 +233,6 @@ def generate_codes(count: int) -> None:
 @click.option("--max-uses", "-n", type=int, default=5, help="Max uses for this code.")
 def add_code(code: str, max_uses: int) -> None:
     """Add a custom invite code. Usage: snow-deals-agg add-code FRESHPOWDER2026 -n 100"""
-
     async def _run() -> None:
         await init_auth_db()
         created = await create_invite_codes([code.strip().upper()], max_uses=max_uses)

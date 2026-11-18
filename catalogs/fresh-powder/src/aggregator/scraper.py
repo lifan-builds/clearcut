@@ -3,30 +3,37 @@
 from __future__ import annotations
 
 import asyncio
-from collections import Counter
-from dataclasses import dataclass, replace
+import importlib
 import logging
 import math
-import hashlib
-import json
 import re
-import random
-from email.utils import parsedate_to_datetime
-from datetime import timezone
-from datetime import datetime
+from collections import Counter
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
+from deal_common.http import DEFAULT_HEADERS, fetch_listing, fetch_products
+from deal_common.models import Product
+from deal_common.parsers.base import BaseParser
+from deal_common.parsers.common import clean_product_name
 
 from aggregator.categorizer import categorize, exclusion_reason
-from aggregator.reviews import _extract_brand, _normalize_brand
 from aggregator.config import STORES, StoreConfig
 from aggregator.models import AggregatedDeal
+from aggregator.reviews import _extract_brand, _normalize_brand
 from aggregator.sizes import extract_lengths as _extract_lengths
-from deal_common.parsers.common import clean_product_name
-from deal_common.models import Product
-from deal_common.http import DEFAULT_HEADERS, fetch_products, fetch_listing
-from deal_common.parsers.base import BaseParser
+
+__all__ = [
+    "ScrapeReport",
+    "StoreScrapeSummary",
+    "build_scrape_report",
+    "fetch_listing",
+    "protect_partial_snapshots",
+    "scrape_all",
+    "scrape_store",
+    "scrape_store_browser",
+]
 
 log = logging.getLogger(__name__)
 
@@ -42,17 +49,13 @@ def _get_semaphore(domain: str) -> asyncio.Semaphore:
     return _semaphores[domain]
 
 
-# Registry mapping parser_type -> (module_path, class_name)
-# Browser-only stores (evo, backcountry, thehouse, etc.) are handled by browser.py
-# and don't need entries here.
 _PARSER_REGISTRY: dict[str, tuple[str, str]] = {
-    "shopify":          ("deal_common.parsers.shopify", "ShopifyParser"),
-    "skiessentials":    ("deal_common.parsers.skiessentials", "SkiEssentialsParser"),
-    "bluezone":         ("aggregator.parsers.bluezone", "BlueZoneParser"),
-    "alpineshopvt":     ("aggregator.parsers.alpineshopvt", "AlpineShopVTParser"),
-    "thecircle":        ("deal_common.parsers.thecircle", "TheCircleParser"),
+    "shopify": ("deal_common.parsers.shopify", "ShopifyParser"),
+    "skiessentials": ("deal_common.parsers.skiessentials", "SkiEssentialsParser"),
+    "bluezone": ("aggregator.parsers.bluezone", "BlueZoneParser"),
+    "thecircle": ("deal_common.parsers.thecircle", "TheCircleParser"),
     "coloradodiscount": ("aggregator.parsers.coloradodiscount", "ColoradoDiscountParser"),
-    "sacredride":       ("aggregator.parsers.sacredride", "SacredRideParser"),
+    "sacredride": ("aggregator.parsers.sacredride", "SacredRideParser"),
 }
 
 
@@ -63,7 +66,6 @@ def _get_parser(parser_type: str) -> BaseParser | None:
         return None
     module_path, class_name = entry
     try:
-        import importlib
         module = importlib.import_module(module_path)
         return getattr(module, class_name)()
     except (ImportError, AttributeError) as e:
@@ -152,7 +154,7 @@ def _products_to_deals(
 
     Filters out kids/junior products.
     """
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     deals: list[AggregatedDeal] = []
     for p in products:
         if p.offers:
@@ -366,7 +368,7 @@ async def scrape_all(
                     log.warning("[%s] Returned zero deals; retrying once", store.name)
                     try:
                         result = await scrape_store(store, client, delay=delay, max_pages=max_pages, outcomes=outcomes)
-                    except Exception as exc:
+                    except (httpx.HTTPError, ValueError, RuntimeError, OSError) as exc:
                         log.error("[%s] Retry failed: %s", store.name, exc)
                         result = []
                 log.info("[%s] Completed: %d deals after filtering", store.name, len(result))

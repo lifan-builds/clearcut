@@ -1,117 +1,34 @@
-name: Cycling and tools checks
+name: Checks
 
 on:
   pull_request:
     paths:
       - 'common/**'
-      - 'catalogs/fresh-powder/**'
-      - 'catalogs/cycling/**'
-      - 'catalogs/tools/**'
-      - 'scripts/check.py'
-      - 'scripts/*.py'
+      - 'catalogs/**'
+      - 'scripts/**'
+      - 'api/**'
+      - 'app.py'
       - 'pyproject.toml'
-      - '.github/workflows/catalog-*.yml'
+      - '.github/workflows/*.yml'
   workflow_dispatch:
-    inputs:
-      candidate_admission:
-        description: Run the selected public candidate and merchant admission audit
-        type: boolean
-        default: false
-      candidate_source:
-        description: Retailer to audit when candidate admission is enabled
-        type: choice
-        options:
-          - ra-cycles
-          - grizzly
-        default: ra-cycles
-      snow_preview:
-        description: Deploy a nonproduction Fresh Powder preview after offline checks
-        type: boolean
-        default: false
 
 permissions:
   contents: read
 
 jobs:
-  offline:
+  check:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install -e '.[dev]'
-      - run: python scripts/check.py -q
-      - run: ruff check common/deal_common/catalog catalogs/cycling/src catalogs/tools/src scripts/probe_sources.py scripts/package_catalog.py scripts/restore_catalog.py scripts/verify_catalog_live.py scripts/audit_catalog.py scripts/audit_merchants.py scripts/benchmark.py common/deal_common/benchmark.py
-      - run: node --check common/deal_common/catalog/static/catalog.js
-      - name: Audit isolated retailer candidate
-        id: candidate
-        if: github.event_name == 'workflow_dispatch' && inputs.candidate_admission
-        env:
-          CANDIDATE_SOURCE: ${{ inputs.candidate_source || 'ra-cycles' }}
-        run: |
-          case "$CANDIDATE_SOURCE" in
-            ra-cycles)
-              manifest='docs/tasks/ra-source/candidates.json'
-              artifact='ra-source-admission'
-              ;;
-            grizzly)
-              manifest='docs/tasks/grizzly-recovery/candidates.json'
-              artifact='grizzly-source-admission'
-              ;;
-            *)
-              echo '::error::Unsupported candidate source'
-              exit 1
-              ;;
-          esac
-          printf 'artifact=%s\n' "$artifact" >> "$GITHUB_OUTPUT"
-          python scripts/probe_sources.py "$manifest" --output "$RUNNER_TEMP/source-admission" --max-pages 30 --audit-merchants
-      - uses: actions/upload-artifact@v4
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.candidate_admission && steps.candidate.outputs.artifact != ''
-        with:
-          name: ${{ steps.candidate.outputs.artifact }}
-          path: ${{ runner.temp }}/source-admission/
-          retention-days: 30
-
-  snow-preview:
-    if: github.event_name == 'workflow_dispatch' && inputs.snow_preview
-    needs: offline
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --global vercel@65.9.0
-      - name: Deploy requested snow preview
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: |
-          for key in VERCEL_PROJECT_ID VERCEL_ORG_ID VERCEL_TOKEN; do
-            if [ -z "${!key}" ]; then echo "::error::Missing configuration: $key"; exit 1; fi
-          done
-          # Bind the shared deployment secrets to the existing snow project.
-          if [ "$VERCEL_PROJECT_ID" != 'prj_ldWgEpa4q55ZYSwxpypQ1IjlmI8N' ]; then
-            echo "::error::Configured Vercel project is not Fresh Powder"; exit 1
-          fi
-          vercel deploy --yes --target=preview --token "$VERCEL_TOKEN" --meta "githubCommitSha=$GITHUB_SHA" > "$RUNNER_TEMP/snow-preview-url.txt"
-          node <<'NODE'
-          const fs = require('node:fs');
-          const path = require('node:path');
-          const value = fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'snow-preview-url.txt'), 'utf8').trim();
-          const url = new URL(value);
-          if (url.protocol !== 'https:' || !url.hostname.endsWith('.vercel.app') ||
-              url.username || url.password || url.port || url.pathname !== '/' || url.search || url.hash) {
-            throw new Error('Deployment did not return a public Vercel preview URL');
-          }
-          const summary = ['### Fresh Powder preview', '', `[Open preview](${url.href})`, '', `Commit: ${process.env.GITHUB_SHA}`, ''].join('\n');
-          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
-          console.log(`Snow preview: ${url.href}`);
-          NODE
+      - run: pip install -e '.[dev]'
+      - run: python scripts/check.py -q
+      - run: ruff check .
+      - run: node --test catalogs/fresh-powder/tests/*.cjs
+      - run: node --check common/deal_common/catalog/static/catalog.js catalogs/fresh-powder/src/aggregator/web/static/*.js

@@ -10,7 +10,7 @@ import math
 import re
 import unicodedata
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import aiosqlite
@@ -48,7 +48,7 @@ def reported_sizes(sizes: str | None) -> list[str]:
     """Keep wide snowboard variants distinct and never fill gaps in a range."""
     found = set()
     for token in (sizes or "").split(","):
-        match = re.fullmatch(r"\s*(\d{3})\s*(w)?\s*(?:cm)?\s*(wide)?\s*", token, re.I)
+        match = re.fullmatch(r"\s*(\d{3})\s*(w)?\s*(?:cm)?\s*(wide)?\s*", token, re.IGNORECASE)
         if match and 100 <= int(match[1]) <= 220:
             found.add(match[1] + ("W" if match[2] or match[3] else ""))
     return sorted(found, key=lambda value: (int(value.rstrip("W")), value.endswith("W")))
@@ -64,7 +64,7 @@ async def catalog_rows(db_path: Path | None = None) -> list[dict]:
               ON latest.store=d.store
             WHERE d.exclusion_reason IS NULL AND d.url IN ({placeholders})
         """, tuple(REFERENCES))).fetchall()
-    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=72)
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=72)
     result = []
     for row in rows:
         offer = dict(row)

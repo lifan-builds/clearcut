@@ -1,9 +1,8 @@
 """Tests for the scraper module — product-to-deal conversion and kids filtering."""
 
-from datetime import datetime
 
 from aggregator.config import StoreConfig
-from aggregator.scraper import build_scrape_report, _is_kids_product, _products_to_deals
+from aggregator.scraper import _is_kids_product, _products_to_deals, build_scrape_report
 from deal_common.models import Product
 
 

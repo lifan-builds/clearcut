@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
-import aiosqlite
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
-from aggregator.config import env_flag, STORES, EQUIPMENT_CATEGORIES
-from aggregator.models import AggregatedDeal, model_year
-from aggregator.offers import SCHEMA as OFFER_SCHEMA, write_offers, selection_sql
-from aggregator.sizes import matches_length
+import aiosqlite
 from deal_common.offers import discount
+
+from aggregator.config import EQUIPMENT_CATEGORIES, STORES, env_flag
+from aggregator.models import AggregatedDeal, model_year
+from aggregator.offers import SCHEMA as OFFER_SCHEMA
+from aggregator.offers import selection_sql, write_offers
+from aggregator.sizes import matches_length
 
 DB_PATH = Path(os.environ.get("DATABASE_PATH", Path(__file__).resolve().parents[2] / "data" / "deals.db"))
 
@@ -121,7 +125,7 @@ async def ensure_deals_db_ready(db_path: Path = DB_PATH) -> None:
             await cursor.fetchone()
             await db.execute("SELECT product_url FROM deal_offers LIMIT 1")
             await db.execute("SELECT product_url FROM offer_observations LIMIT 1")
-        except Exception as exc:
+        except (sqlite3.Error, aiosqlite.Error) as exc:
             raise RuntimeError(
                 f"Deal database at {db_path} is missing required deal/offer tables. Rebuild the snapshot before serving."
             ) from exc
@@ -137,7 +141,7 @@ async def repair_deal_categories(db_path: Path) -> int:
             "SELECT id, name, url, product_type, brand, category, exclusion_reason, sizes, length_min, length_max FROM deals"
         )).fetchall()
         corrections = []
-        for deal_id, name, url, product_type, brand, category, old_reason, sizes, lower, upper in rows:
+        for deal_id, name, url, product_type, brand, category, old_reason, sizes, _lower, _upper in rows:
             reason = exclusion_reason(name, url, product_type or '')
             corrected = None if reason else categorize(name, url, product_type or '', brand=brand or '')
             if corrected != category or reason != old_reason:
@@ -159,10 +163,8 @@ async def init_db(db_path: Path = DB_PATH) -> None:
     async with _connect(db_path) as db:
         await db.executescript(SCHEMA + OFFER_SCHEMA)
         for migration in MIGRATIONS:
-            try:
+            with contextlib.suppress(sqlite3.OperationalError, aiosqlite.OperationalError):
                 await db.execute(migration)
-            except Exception:
-                pass  # column/index already exists
         await db.execute("UPDATE deals SET first_seen = scraped_at WHERE first_seen IS NULL")
         for store in STORES:
             await db.execute("UPDATE deals SET currency = ? WHERE store = ?", (store.currency, store.name))
@@ -171,7 +173,11 @@ async def init_db(db_path: Path = DB_PATH) -> None:
 
 async def upsert_deals(deals: list[AggregatedDeal], db_path: Path = DB_PATH) -> int:
     """Insert or update deals. Returns count of rows affected."""
-    from aggregator.categorizer import categorize, category_from_product_type, exclusion_reason
+    from aggregator.categorizer import (
+        categorize,
+        category_from_product_type,
+        exclusion_reason,
+    )
     from aggregator.sizes import extract_lengths
     async with _connect(db_path) as db:
         count = 0
@@ -489,7 +495,6 @@ async def query_deals(
 
 async def upsert_reviews(reviews: list, db_path: Path = DB_PATH) -> int:
     """Insert or update reviews. Accepts dicts or ReviewData NamedTuples."""
-    from datetime import datetime
     now = datetime.now().isoformat()
     async with _connect(db_path) as db:
         count = 0

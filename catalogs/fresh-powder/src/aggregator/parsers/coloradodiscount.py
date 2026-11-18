@@ -5,10 +5,8 @@ import re
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, Tag
-
 from deal_common.models import Product
 from deal_common.parsers.base import BaseParser
-
 from deal_common.parsers.common import parse_price as _parse_price
 
 log = logging.getLogger(__name__)
@@ -97,6 +95,6 @@ class ColoradoDiscountParser(BaseParser):
             original_price=original_price,
             image_url=urljoin(page_url, img.get("data-src") or img.get("src") or "")
             if (img := li.select_one("img[data-src], img[src]")) else None,
-            sizes=[length + "cm" for group in re.findall(r"\b((?:\d{3}\s*[,/]\s*)*\d{3})\s*cm\b", name, re.I)
+            sizes=[length + "cm" for group in re.findall(r"\b((?:\d{3}\s*[,/]\s*)*\d{3})\s*cm\b", name, re.IGNORECASE)
                    for length in re.findall(r"\d{3}", group)] or None,
         )

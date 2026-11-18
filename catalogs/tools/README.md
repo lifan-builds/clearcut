@@ -1,6 +1,6 @@
 # Bench Drop — workshop and power-tool deals
 
-A working tools storefront built on `common/deal_common/catalog/`. Scope: power tools, combo kits, and substantial workshop equipment. The default retailer-reference floor is $200; users can change it. Percentage off always ranks first.
+Workshop and power-tool storefront built on `common/deal_common/catalog/`. Scope covers power tools, combo kits, and stationary or heavy workshop equipment. The default retailer-reference floor is $200, ranked by percentage off.
 
 ## Run from the workspace root
 
@@ -10,18 +10,12 @@ tool-deals refresh --database catalogs/tools/data/catalog.db
 tool-deals serve --database catalogs/tools/data/catalog.db --port 8767
 ```
 
-Open http://127.0.0.1:8767/. Scraping and serving are separate. Snapshots are read-only during serving, and offers older than 24 hours leave browsing.
+Open http://127.0.0.1:8767/. Scraping and serving are separate; serving reads snapshots read-only and hides offers older than 24 hours.
 
 ## Catalog ownership
 
-`src/tool_deals/catalog.py` owns scope, classification, package and explicit battery-platform rules, retailers, copy, and defaults. Its `static/` folder owns the charcoal/orange theme and drill artwork. Shared code lives in `common/`.
+`src/tool_deals/catalog.py` owns categories, classification rules, package formats, explicit battery-platform matching, brand aliases, and the 13 USD retailer sources. `src/tool_deals/static/` owns the charcoal/orange theme and drill artwork; shared ingestion, storage, filtering, ranking, pagination, and templates live in `common/deal_common/`.
 
-Eleven sources are enabled on this follow-up branch: Tool Nut, Woodcraft, Craft Supplies USA, Harvey Woodworking, WEN, Factory Direct Supply, Grizzly Industrial, Max Warehouse, OakTree Supply, Taylor Toolworks and Fasteners Inc. The current snapshot has **409 qualifying in-stock listings, including 26 at least 40% off**; six retailers contribute a deep deal. Taylor uses verified exact-SKU detail pages; Fasteners reuses the existing public Shopify feed and merchant redirects. These are dated observations, not guaranteed checkout availability. The prior nine-source release `7798318` remains unchanged and awaits publication approval. See the [Fasteners follow-up](../../docs/tasks/fasteners-source/IMPLEMENTATION.md), [Taylor checkpoint](../../docs/tasks/taylor-source/IMPLEMENTATION.md) and [prior competitive pass](../../docs/benchmarks/2026-11-03-competitive-continuation.md).
-
-Bare tools, kits, and unspecified packages have separate labels. Explicit Milwaukee M12/M18, DeWalt 20V MAX/FLEXVOLT, and Makita LXT/XGT title evidence can supply platform filters; voltage alone cannot establish compatibility. Empty size/platform filters are hidden. Package contents, machinery voltage/phase, shipping and returns still need merchant confirmation.
-
-Accessory jigs, templates, rests, consumables, standalone batteries/chargers, and explicitly used/refurbished/open-box goods are excluded. Titles/types do not establish every condition fact. References are retailer compare-at prices, not independently verified street prices.
-
-Max Warehouse's independent checks recovered from the earlier HTTP429; its earlier 21-listing admission snapshot added no 40%-off deals. OakTree adds 11 such deals, all checked against separate merchant product data. Showroom machines are excluded. Access-restricted large retailers and sources requiring different SKU/stock adapters remain coverage gaps; the researched queue does not establish complete market coverage.
-
-See [build and launch instructions](../../docs/tasks/cycling-tools-sites/DELIVERY.md). No public deployment has been performed for this catalog.
+- **Scope & exclusions:** Excludes manual hand tools, blades/bits/abrasives/consumables, jigs/templates/stands, standalone welding guns/feeders/torches, standalone batteries/chargers, food grinders, and used/refurbished/open-box/showroom stock.
+- **Formats & platforms:** Labels bare tools, kits, bundles, and unspecified packages separately. Battery-platform facets (`Milwaukee M18`/`M12`, `DeWalt 20V MAX`/`FLEXVOLT`, `Makita LXT`/`XGT`) require both brand and explicit platform evidence rather than voltage alone.
+- **Pricing:** Reference prices are retailer compare-at prices on the exact SKU/variant. Confirm package contents, voltage/phase requirements, shipping, and return terms with the retailer.

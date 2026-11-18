@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from datetime import UTC
 
 import jwt
 from fastapi import Request, Response
@@ -56,11 +57,11 @@ def _is_public(path: str) -> bool:
 
 def create_session_token(invite_code: str) -> str:
     """Create a signed JWT containing the invite code."""
-    from datetime import datetime, timezone
+    from datetime import datetime
     secret_key = get_secret_key()
     payload = {
         "sub": invite_code,
-        "iat": datetime.now(timezone.utc),
+        "iat": datetime.now(UTC),
     }
     return jwt.encode(payload, secret_key, algorithm="HS256")
 

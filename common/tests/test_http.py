@@ -1,12 +1,33 @@
-"""Exercise shared ingestion without a live retailer or a catalog import."""
+"""Exercise shared HTTP ingestion and parser helpers without live network calls."""
 
 import asyncio
 
 import httpx
-
+import pytest
 from deal_common.config import RetailerConfig
 from deal_common.http import fetch_products
+from deal_common.parsers.common import clean_product_name, parse_price
 from deal_common.parsers.shopify import ShopifyParser
+
+
+@pytest.mark.parametrize(("raw", "expected"), [
+    ("$269.99", 269.99),
+    ("$1,250.00", 1250.00),
+    ("C$485.99", 485.99),
+    ("579.99", 579.99),
+    ("Was: $299.99", 299.99),
+    ("  $89.50  ", 89.50),
+    ("", None),
+    ("Call for price", None),
+])
+def test_parse_price(raw, expected):
+    assert parse_price(raw) == expected
+
+
+def test_clean_product_name_recovers_placeholder_labels():
+    assert clean_product_name("  Atomic   Bent 100 ") == "Atomic Bent 100"
+    assert clean_product_name("Product Image", "https://shop.test/products/atomic-bent-100.html") == "Atomic Bent 100"
+    assert clean_product_name("Image", "") == ""
 
 
 def test_shopify_pagination_retains_available_products_and_metadata():
@@ -27,7 +48,8 @@ def test_shopify_pagination_retains_available_products_and_metadata():
         return httpx.Response(200, json={"products": []})
 
     async def run():
-        store = RetailerConfig("Example", "example.com", ["https://example.com/collections/sale"], shopify_products_limit=1)
+        store = RetailerConfig("Example", "example.com", ["https://example.com/collections/sale"],
+                               shopify_products_limit=1)
         async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
             return await fetch_products(store, ShopifyParser(), client, semaphore=asyncio.Semaphore(2), delay=0)
 
@@ -58,7 +80,8 @@ def test_page_cap_and_failed_collection_do_not_discard_other_results():
             "https://example.com/collections/broken", "https://example.com/collections/sale",
         ], shopify_products_limit=1)
         async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
-            return await fetch_products(store, ShopifyParser(), client, semaphore=asyncio.Semaphore(1), delay=0, max_pages=1)
+            return await fetch_products(store, ShopifyParser(), client,
+                                        semaphore=asyncio.Semaphore(1), delay=0, max_pages=1)
 
     assert len(asyncio.run(run())) == 1
     assert len(requests) == 5

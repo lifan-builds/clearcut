@@ -2,15 +2,15 @@
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlencode
+from xml.sax.saxutils import escape
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from deal_common.catalog.definition import Catalog
+from deal_common.catalog.definition import Catalog, manufacturer_name
 from deal_common.catalog.health import snapshot_health
-from deal_common.catalog.identity import manufacturer_name
 from deal_common.catalog.query import FRESHNESS_HOURS, is_fresh, query
 from deal_common.catalog.storage import read_offer_history, read_sources
 from deal_common.offers import size_key
@@ -23,9 +23,12 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
     app.mount("/static", StaticFiles(directory=ASSETS / "static"), name="static")
     app.mount("/brand", StaticFiles(directory=catalog.assets), name="brand")
     templates = Jinja2Templates(directory=ASSETS / "templates")
-    templates.env.globals["public_url"] = public_url.rstrip("/") if public_url else None
+    base_url = public_url.rstrip("/") if public_url else None
+    templates.env.globals["public_url"] = base_url
     templates.env.filters["money"] = lambda value: f"${value:,.2f}" if value % 1 else f"${value:,.0f}"
-    templates.env.filters["date"] = lambda value: datetime.fromisoformat(value).strftime("%b %d, %H:%M UTC") if value else "Not yet refreshed"
+    templates.env.filters["date"] = (
+        lambda value: datetime.fromisoformat(value).strftime("%b %d, %H:%M UTC") if value else "Not yet refreshed"
+    )
 
     def sources():
         configured = {source.name for source in catalog.sources}
@@ -40,8 +43,7 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
             "default-src 'self'; img-src 'self' https:; style-src 'self'; "
             "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
         )
-        # Local previews and filter permutations should not enter search indexes.
-        if not public_url or request.url.query or request.url.path == "/healthz":
+        if not base_url or request.url.query or request.url.path == "/healthz":
             response.headers["X-Robots-Tag"] = "noindex, nofollow"
         return response
 
@@ -57,19 +59,20 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
         if brand and catalog.brand_aliases:
             brand = manufacturer_name(brand, brand_aliases=catalog.brand_aliases)
         filters = {"q": q, "category": category, "brand": brand, "store": store, "size": size, "format": format,
-                       "platform": platform, "min_reference": min_reference, "max_price": max_price,
-                       "min_discount": min_discount, "stock": stock, "page": page}
-        rows = sources()
-        result = query(rows, filters, brand_aliases=catalog.brand_aliases)
+                   "platform": platform, "min_reference": min_reference, "max_price": max_price,
+                   "min_discount": min_discount, "stock": stock, "page": page}
+        result = query(sources(), filters, brand_aliases=catalog.brand_aliases)
         if size:
             requested_size_key = size_key(size)
             filters["size"] = next((label for label in result["facets"]["size"]
                                     if size_key(label) == requested_size_key), size)
         for card in result["cards"]:
             card["history_url"] = "/history?" + urlencode({"source": card["store"], "product": card["url"],
-                                                        "variant": card["offer"]["variant_key"]})
+                                                           "variant": card["offer"]["variant_key"]})
+
         def page_url(number):
             return "/?" + urlencode({**filters, "page": number, "stock": str(stock).lower()}) + "#deals"
+
         labels = {"q": "Search", "category": "Category", "brand": "Brand", "store": "Retailer",
                   "size": catalog.size_label, "format": "Package", "platform": "Platform",
                   "min_reference": "Reference ≥ $", "max_price": "Budget ≤ $",
@@ -79,18 +82,14 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
             value = filters[key]
             if not value:
                 continue
-            cleared = {**filters, key: 0 if key in {"min_reference", "max_price", "min_discount"} else "",
-                       "stock": str(stock).lower(), "page": 1}
-            if key == "stock":
-                cleared[key] = "false"
+            cleared = {**filters, key: "false" if key == "stock" else (0 if key in {"min_reference", "max_price", "min_discount"} else ""),
+                       "stock": "false" if key == "stock" else str(stock).lower(), "page": 1}
             if key == "stock":
                 display = label
             elif isinstance(value, (int, float)):
-                display = f"{label} {value:g}"
+                display = f"{label} {value:g}" + ("%" if key == "min_discount" else "")
             else:
                 display = f"{label}: {value}"
-            if key == "min_discount":
-                display += "%"
             active_filters.append({"label": display, "url": "/?" + urlencode(cleared) + "#deals"})
         return templates.TemplateResponse(request=request, name="index.html", context={
             "catalog": catalog, "filters": filters, "result": result, "active_filters": active_filters,
@@ -122,15 +121,15 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
     def source_health(request: Request):
         rows = {row["name"]: row for row in sources()}
         now = datetime.now(UTC)
-        health = []
-        for source in catalog.sources:
-            row = rows.get(source.name, {})
-            health.append({"name": source.name, "url": source.scrape_urls[0],
-                           "checked_at": row.get("checked_at"), "successful_at": row.get("successful_at"),
-                           "status": row.get("status", "Not refreshed"),
-                           "fresh": is_fresh(row.get("successful_at"), now),
-                           "count": len(row.get("products", [])),
-                           "collections": row.get("detail", {}).get("collections", [])})
+        health = [{
+            "name": source.name, "url": source.scrape_urls[0],
+            "checked_at": (row := rows.get(source.name, {})).get("checked_at"),
+            "successful_at": row.get("successful_at"),
+            "status": row.get("status", "Not refreshed"),
+            "fresh": is_fresh(row.get("successful_at"), now),
+            "count": len(row.get("products", [])),
+            "collections": row.get("detail", {}).get("collections", []),
+        } for source in catalog.sources]
         return templates.TemplateResponse(request=request, name="sources.html", context={
             "catalog": catalog, "sources": health, "freshness_hours": FRESHNESS_HOURS})
 
@@ -140,14 +139,13 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
 
     @app.get("/robots.txt", response_class=PlainTextResponse)
     def robots():
-        if public_url:
-            return f"User-agent: *\nAllow: /\nDisallow: /healthz\nSitemap: {public_url.rstrip('/')}/sitemap.xml\n"
+        if base_url:
+            return f"User-agent: *\nAllow: /\nDisallow: /healthz\nSitemap: {base_url}/sitemap.xml\n"
         return "User-agent: *\nDisallow: /\n"
 
     @app.get("/sitemap.xml")
     def sitemap():
-        from xml.sax.saxutils import escape
-        base = escape(public_url.rstrip("/")) if public_url else ""
+        base = escape(base_url) if base_url else ""
         entries = "".join(f"<url><loc>{base}{path}</loc></url>" for path in ("/", "/sources")) if base else ""
         return Response('<?xml version="1.0" encoding="UTF-8"?>'
                         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'

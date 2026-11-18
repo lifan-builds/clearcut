@@ -1,12 +1,11 @@
-from datetime import datetime, timedelta, timezone
 import importlib.util
 import json
-from pathlib import Path
 import subprocess
 import sys
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
-
 from deal_common.catalog.storage import save_source
 from tool_deals.catalog import CATALOG
 
@@ -17,12 +16,12 @@ spec.loader.exec_module(packager)
 
 
 def snapshot(path, *, catalog="tools", timestamp=None):
-    timestamp = timestamp or datetime.now(timezone.utc).isoformat()
-    product = dict(name="Fixture Table Saw", url="https://www.woodcraft.com/products/fixture", brand="Fixture",
-                   category="Workshop equipment", format="Not specified", platform="", offers=[dict(
-                       variant_key="1", url="https://www.woodcraft.com/products/fixture?variant=1",
-                       current_price=500, original_price=1000, size=None, options="", availability="in_stock",
-                       image_url=None, reference_basis="retailer_compare_at")])
+    timestamp = timestamp or datetime.now(UTC).isoformat()
+    product = {"name": "Fixture Table Saw", "url": "https://www.woodcraft.com/products/fixture", "brand": "Fixture",
+               "category": "Workshop equipment", "format": "Not specified", "platform": "", "offers": [{
+                   "variant_key": "1", "url": "https://www.woodcraft.com/products/fixture?variant=1",
+                   "current_price": 500, "original_price": 1000, "size": None, "options": "", "availability": "in_stock",
+                   "image_url": None, "reference_basis": "retailer_compare_at"}]}
     save_source(path, catalog, "Woodcraft", timestamp, [product], "complete", {})
     for source in CATALOG.sources:
         if source.name != "Woodcraft":
@@ -31,7 +30,7 @@ def snapshot(path, *, catalog="tools", timestamp=None):
 
 def test_standalone_bundle_contains_only_selected_catalog_and_serves(tmp_path):
     db = tmp_path / "tools.db"
-    snapshot(db, timestamp=(datetime.now(timezone.utc) - timedelta(days=2)).isoformat())
+    snapshot(db, timestamp=(datetime.now(UTC) - timedelta(days=2)).isoformat())
     snapshot(db)
     output = tmp_path / "bundle"
     receipt = packager.package("tools", db, output, "https://benchdrop.example.com")
@@ -56,7 +55,7 @@ from pathlib import Path
 assert client.get('/healthz').json()['snapshot_sha256'] == json.loads(Path('BUILD-RECEIPT.json').read_text())['snapshot_sha256']
 history = client.get('/history', params={'source':'Woodcraft','product':'https://www.woodcraft.com/products/fixture','variant':'1'})
 assert history.status_code == 200 and '2 observed days' in history.text
-"""], cwd=output, capture_output=True, text=True)
+"""], cwd=output, capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
 
 
@@ -65,9 +64,9 @@ def test_package_rejects_bad_snapshot_before_writing(tmp_path, reason):
     db = tmp_path / "tools.db"
     if reason != "missing":
         snapshot(db, catalog="cycling" if reason == "wrong_catalog" else "tools",
-                 timestamp=(datetime.now(timezone.utc) - timedelta(days=4)).isoformat() if reason == "stale" else None)
+                 timestamp=(datetime.now(UTC) - timedelta(days=4)).isoformat() if reason == "stale" else None)
     if reason == "empty":
-        save_source(db, "tools", "Woodcraft", datetime.now(timezone.utc).isoformat(), [], "complete", {})
+        save_source(db, "tools", "Woodcraft", datetime.now(UTC).isoformat(), [], "complete", {})
     output = tmp_path / "bundle"
     with pytest.raises(ValueError):
         packager.package("tools", db, output)

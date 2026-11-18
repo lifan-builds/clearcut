@@ -3,23 +3,22 @@ import asyncio
 import copy
 import json
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from functools import partial
 
 import pytest
-from bs4 import BeautifulSoup
-from fastapi.testclient import TestClient
-
 from aggregator import comparisons, db
 from aggregator.models import AggregatedDeal
 from aggregator.web import comparison_routes
 from aggregator.web.app import create_app
+from bs4 import BeautifulSoup
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture
 def comparison_db(tmp_path, monkeypatch):
     path = tmp_path / 'comparisons.db'
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     refs = copy.deepcopy(comparisons.REFERENCES)
     for _, ref in refs.values():
         ref['history_since'] = (now - timedelta(days=2)).isoformat()
@@ -69,7 +68,7 @@ def test_catalog_has_unique_reviewed_references():
 
 
 def test_currency_exact_lengths_and_reviewed_history(comparison_db):
-    path, p, offers, now = comparison_db
+    path, p, _offers, _now = comparison_db
     usd = asyncio.run(comparisons.product_detail(p['slug'], db_path=path))
     assert [o['current_price'] for o in usd['offers']] == [400, 450]
     assert usd['observed_low'] == 400  # excludes old $10 history and CAD $300
@@ -99,7 +98,7 @@ def test_stale_and_superseded_offers_are_not_current(comparison_db):
 
 
 def test_product_page_schema_links_and_filters(comparison_db):
-    path, p, offers, now = comparison_db
+    _path, p, _offers, _now = comparison_db
     with TestClient(create_app(enable_lifespan=False)) as client:
         response = client.get('/products/'+p['slug'])
         assert response.status_code == 200
@@ -140,7 +139,7 @@ def test_expired_product_has_no_current_offer_schema(comparison_db):
 
 def test_catalog_cards_link_to_comparison_but_keep_retailer_action(comparison_db):
     from aggregator.web.routes import templates
-    path, p, offers, now = comparison_db
+    _path, p, offers, _now = comparison_db
     html = templates.env.get_template('partials/_card.html').render(d=offers[0], site_url='https://freshpowder.clifan.com')
     soup = BeautifulSoup(html, 'html.parser')
     assert soup.select_one('h3 a')['href'] == '/products/'+p['slug']

@@ -1,7 +1,10 @@
 """Store registry and category configuration."""
+
 from __future__ import annotations
+
 import os
 from dataclasses import dataclass
+
 from deal_common.config import RetailerConfig
 
 
@@ -15,12 +18,7 @@ class StoreConfig(RetailerConfig):
     tax_free: bool = False
 
 
-# ---------------------------------------------------------------------------
-# Store registry — reviewed ski/snowboard retailer connections
-# ---------------------------------------------------------------------------
-
 STORES: list[StoreConfig] = [
-    # Shopify-based (confirmed Shopify, reuse ShopifyParser from snow_deals)
     StoreConfig(
         "Aspen Ski and Board", "aspenskiandboard.com",
         scrape_urls=[
@@ -195,11 +193,6 @@ STORES: list[StoreConfig] = [
         use_browser=True,
         tax_free=True, currency="CAD",
     ),
-    # Level Nine redirects to Backcountry Outlet (verified 2026-11-01).
-    # Its snow collections are covered under Backcountry, not a separate store.
-    # Powder7 removed — site primarily sells used items
-
-    # Shopify — new additions
     StoreConfig(
         "Colorado Ski Shop", "coloradoskishop.com",
         scrape_urls=[
@@ -262,7 +255,6 @@ STORES: list[StoreConfig] = [
         parser_type="shopify",
     ),
 
-    # MEC — Canadian outdoor retailer, Next.js + Algolia (browser needed for AWS WAF)
     StoreConfig(
         "MEC", "mec.ca",
         scrape_urls=[
@@ -272,26 +264,6 @@ STORES: list[StoreConfig] = [
         use_browser=True,
         tax_free=True, currency="CAD",
     ),
-
-    # REI — blocked by Akamai from datacenter/CI IPs.
-    # Rechecked 2026-05-17: HTTP/2 returns a stream/internal error and HTTP/1.1
-    # times out before headers. Keep disabled until REI exposes a stable
-    # unauthenticated API/feed path or an approved proxy strategy exists.
-    # StoreConfig(
-    #     "REI", "rei.com",
-    #     scrape_urls=[
-    #         "https://www.rei.com/c/downhill-skis/f/scd-deals",
-    #         "https://www.rei.com/c/snowboards/f/scd-deals",
-    #         "https://www.rei.com/c/downhill-ski-boots/f/scd-deals",
-    #         "https://www.rei.com/c/snowboard-boots/f/scd-deals",
-    #         "https://www.rei.com/c/downhill-ski-bindings/f/scd-deals",
-    #         "https://www.rei.com/c/snowboard-bindings/f/scd-deals",
-    #     ],
-    #     parser_type="rei",
-    #     use_browser=True,
-    # ),
-
-    # Headless storefront: public collection feed with SKU-specific sale prices
     StoreConfig(
         "Ski Essentials", "skiessentials.com",
         scrape_urls=[
@@ -409,10 +381,6 @@ STORES: list[StoreConfig] = [
         ],
         currency="CAD", verify_shopify_currency=True,
     ),
-
-    # Unreachable — site appears down
-    # StoreConfig("Sanction", "sanction.com", parser_type="generic"),
-    # StoreConfig("Wiredsport", "wiredsport.com", parser_type="shopify"),  # Oregon (tax-free) but site is down
 ]
 
 
@@ -566,7 +534,7 @@ SNOWBOARD_MODEL_NAMES: set[str] = {
     "proto", "orca", "ejack", "skunk",
     # Ride
     "warpig", "psychocandy", "shadowban", "berzerker", "algorythm",
-    "d.o.a.", "twinpig",
+    "d.o.a.",
     "almanac", "excavator", "heartbreaker",
     # Jones — removed "frontier" (conflicts with Dragon goggles), "storm", "mind", "ultra" (too generic)
     "tweaker", "cultivator", "spellcaster", "hovercraft", "stratos",

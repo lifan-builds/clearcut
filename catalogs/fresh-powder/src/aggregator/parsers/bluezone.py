@@ -5,7 +5,6 @@ import re
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, Tag
-
 from deal_common.models import Product
 from deal_common.parsers.base import BaseParser
 from deal_common.parsers.common import parse_price as _parse_price

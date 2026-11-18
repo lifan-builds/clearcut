@@ -8,11 +8,20 @@ from pathlib import Path
 
 import httpx
 import pytest
+from aggregator.scraper import _products_to_deals
 from bs4 import BeautifulSoup
 from deal_common.catalog.query import query
 from deal_common.config import RetailerConfig
 from deal_common.http import fetch_products
-from deal_common.parsers.thecircle import ORIGIN, TheCircleParser, detail_data
+from deal_common.parsers.thecircle import (
+    ORIGIN,
+    TheCircleParser,
+    _child_age_size,
+    _children_sizing,
+    _html_data,
+    _options,
+    detail_data,
+)
 
 FIXTURES = Path(__file__).parent / 'fixtures/thecircle'
 URL = ORIGIN + '/jackson-mips-helmet.html'
@@ -430,3 +439,51 @@ def test_product_gallery_fallback_cannot_hide_explicit_or_unbound_image_conflict
         soup.select_one('[data-vid="94619673"][data-availability]')['data-image'] = '54568429'
     with pytest.raises(ValueError, match='image'):
         parse(str(soup), raw, raw['url'])
+
+
+@pytest.mark.parametrize('row', json.loads((FIXTURES / 'age-manifest.json').read_text()), ids=lambda row: row['stem'])
+def test_child_age_evidence_marks_containment_and_snow_consumer_excludes(row):
+    html, raw = capture(row['stem'])
+    product = parse(html, raw, raw['url'])[0]
+    assert product.product_type == 'Includes children sizing'
+    assert _products_to_deals([product], 'The Circle Whistler') == []
+
+
+def test_child_age_labels_and_miles_brand_containment():
+    for size in ('0-3M', '24M', '16Y', '4T', '110/116 (5-6Y)', '74/80 (12–18 Mo)'):
+        assert _child_age_size(size)
+    for size in (None, '18Y', '25M', '0T', '14', 'M', '170cm', '30/32', '12"', '160W'):
+        assert not _child_age_size(size)
+    miles = {'brand': {'id': 2212719, 'title': 'Miles', 'url': 'https://www.thecirclewhistler.com/brands/miles/'}}
+    assert _children_sizing(miles, ['2', 'M']) == 'Includes children sizing'
+    assert _children_sizing(miles, ['15', 'M']) is None
+    for fact in json.loads((FIXTURES / 'age-evidence.json').read_text()):
+        assert _children_sizing(fact, fact['sizes']) == fact['expected']
+
+
+def test_csv_inch_options_and_malformed_option_rejection():
+    assert _options('"Color: Dried Kelp Green","Size: 22"""') == {'color': 'Dried Kelp Green', 'size': '22"'}
+    assert _options('"Color: The ""Blue"" Hour","Size: 30"""') == {'color': 'The "Blue" Hour', 'size': '30"'}
+    for bad in (None, '', '"Size: 22', '"Size: 22""', '"Size: M","size: L"', '"Color: Blue",Size: 22"'):
+        with pytest.raises(ValueError):
+            _options(bad)
+    for stem, count in (('chino-inch', 8), ('kader-inch', 2)):
+        html, raw = capture(stem)
+        assert _html_data(html, raw['url'])['selection'] == _options(raw['variant'])
+        assert len(parse(html, raw, raw['url'])[0].offers) == count
+
+
+@pytest.mark.parametrize('row', json.loads((FIXTURES / 'structural-manifest.json').read_text()), ids=lambda r: r['stem'])
+def test_structural_selected_soldout_and_default_singleton_panels(row):
+    html, raw = capture(row['stem'])
+    parser = TheCircleParser()
+    parser.product_ids[raw['url']] = row['product_id']
+    actual = detail_data(html, row['url'], json.dumps(raw))
+    assert actual['id'] == row['product_id'] and actual['selected'] == row['selected']
+    products = parser.parse_product_evidence(html, row['url'], json.dumps(raw))
+    offers = {o.variant_key: o for o in products[0].offers} if products else {}
+    if row['stem'].startswith('soldout-'):
+        assert actual['variants'][row['selected']]['availability'] == 'out_of_stock'
+        assert row['selected'] not in offers and offers
+    if row['stem'] == 'default-bag':
+        assert offers[row['selected']].size is None and offers[row['selected']].options == ''

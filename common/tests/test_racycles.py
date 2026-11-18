@@ -8,6 +8,7 @@ import httpx
 import pytest
 from bs4 import BeautifulSoup
 from cycling_deals.catalog import CATALOG
+from deal_common.catalog.audit import audit_sample
 from deal_common.catalog.query import query
 from deal_common.catalog.refresh import refresh
 from deal_common.catalog.storage import read_sources
@@ -275,3 +276,37 @@ def test_observed_available_preorder_map_preserves_actual_reservation_notice():
         assert row['shipping_note'].startswith('Coming soon! Reserve your Van Rysel')
         assert 'sales associate will contact you' in row['shipping_note']
         assert ' / XS' not in row['shipping_note']
+
+
+def test_ra_independent_audit_binds_selected_size_and_virtual_warehouse():
+    data = detail_data(HTML, URL, RAW)
+    actual = data['variants'][KEY]
+    card = {'name': data['name'], 'store': 'RA Cycles', 'currency': 'USD',
+            'offer': {'variant_key': KEY, 'url': actual['url'],
+                      'current_price': actual['price'], 'original_price': actual['reference'],
+                      'options': actual['options'], 'size': actual['size'],
+                      'availability': 'in_stock', 'availability_note': actual['shipping_note']}}
+
+    def make_handler(page_html):
+        def handler(request):
+            if request.url.path == '/cart.js':
+                return httpx.Response(200, json={'currency': 'USD'})
+            if request.url.path.endswith('.js'):
+                return httpx.Response(200, json=RAW)
+            return httpx.Response(200, text=page_html)
+        return handler
+
+    matched = asyncio.run(audit_sample([card], {'RA Cycles': 'racycles.com'},
+                                       delay=0, transport=httpx.MockTransport(make_handler(HTML))))[0]
+    assert matched['status'] == 'match'
+    assert matched['checks']['purchase_size'] and matched['checks']['purchase_stock']
+    assert matched['purchase_panel']['sku'] == '9752ESDN29L'
+
+    vw_soup = BeautifulSoup(change(status=lambda s: s[KEY].update(vw=True)), 'html.parser')
+    vw_soup.select_one('.in-stock-message--immediate')['hidden'] = ''
+    vw_soup.select_one('.in-stock-message--vw').attrs.pop('hidden', None)
+    vw_result = asyncio.run(audit_sample([card], {'RA Cycles': 'racycles.com'},
+                                         delay=0, transport=httpx.MockTransport(make_handler(str(vw_soup)))))[0]
+    assert vw_result['status'] == 'mismatch'
+    assert vw_result['checks']['stock'] is True and vw_result['checks']['purchase_stock'] is False
+    assert vw_result['purchase_panel']['virtual_warehouse'] is True
