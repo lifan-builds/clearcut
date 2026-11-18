@@ -1,6 +1,6 @@
-# Deal Aggregator
+# Clearcut
 
-Find deep percentage discounts on high-ticket gear across specialist retailers, with the original reference price, current sale price, dollar savings, and available sizes shown together.
+Multi-catalog specialist deal engine powering FreshPowder, Big Ring, and Bench Drop. Find deep percentage discounts on high-ticket gear across specialist retailers, with the original reference price, current sale price, dollar savings, and available sizes shown together.
 
 - **FreshPowder Live Deals:** [https://freshpowder.clifan.com/](https://freshpowder.clifan.com/)
 - **Overview & Walkthrough:** [https://clifan.com/freshpowder/](https://clifan.com/freshpowder/)

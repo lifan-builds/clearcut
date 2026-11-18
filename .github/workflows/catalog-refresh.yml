@@ -88,7 +88,7 @@ jobs:
           CATALOG: ${{ matrix.catalog }}
         run: |
           cp "$RUNNER_TEMP/catalog.db" "$RUNNER_TEMP/$CATALOG.db"
-          gh release upload latest-data "$RUNNER_TEMP/$CATALOG.db" --clobber --repo lifan-builds/snow-deal-data
+          gh release upload latest-data "$RUNNER_TEMP/$CATALOG.db" --clobber --repo lifan-builds/clearcut-data
       - name: Deploy the validated standalone catalog bundle
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}

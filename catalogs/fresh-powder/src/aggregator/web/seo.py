@@ -46,7 +46,7 @@ TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
 
 def site_url() -> str:
-    return os.environ.get("SITE_URL", "https://snow-deal.vercel.app").rstrip("/")
+    return os.environ.get("SITE_URL", "https://freshpowder.clifan.com").rstrip("/")
 
 
 def page_context(request) -> dict:

@@ -21,7 +21,7 @@ STATIC_SRC = CATALOG / "src" / "aggregator" / "web" / "static"
 STATIC_DEST = ROOT / "public" / "static"
 DB_DEST = CATALOG / "data" / "deals.db"
 DEFAULT_DB_URL = (
-    "https://github.com/lifan-builds/snow-deal-data/"
+    "https://github.com/lifan-builds/clearcut-data/"
     "releases/download/latest-data/deals.db"
 )
 

@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "common"))
 from deal_common.catalog.storage import read_sources
 
-RELEASE_API = "https://api.github.com/repos/lifan-builds/snow-deal-data/releases/tags/latest-data"
+RELEASE_API = "https://api.github.com/repos/lifan-builds/clearcut-data/releases/tags/latest-data"
 MAX_BYTES = 100 * 1024 * 1024
 
 
@@ -52,7 +52,7 @@ def restore(catalog: str, destination: Path, *, bootstrap=False, transport=None,
             raise ValueError("Missing or unsupported snapshot SHA-256 metadata")
         expected_digest = digest.removeprefix("sha256:").lower()
         # Construct the known repository destination, never follow a metadata-supplied URL.
-        url = f"https://github.com/lifan-builds/snow-deal-data/releases/download/latest-data/{catalog}.db"
+        url = f"https://github.com/lifan-builds/clearcut-data/releases/download/latest-data/{catalog}.db"
         destination.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=destination.parent) as temp:
             candidate = Path(temp) / "snapshot.db"

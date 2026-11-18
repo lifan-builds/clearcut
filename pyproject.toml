@@ -3,9 +3,9 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "deal-aggregator"
+name = "clearcut"
 version = "0.1.0"
-description = "Shared deal-finding components and category-specific catalogs"
+description = "Multi-catalog specialist deal engine powering FreshPowder, Big Ring, and Bench Drop"
 requires-python = ">=3.11"
 dependencies = [
     "aiosqlite>=0.20,<0.23",

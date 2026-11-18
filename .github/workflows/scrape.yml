@@ -39,7 +39,7 @@ jobs:
       - name: Restore previous snapshot and price history
         env:
           GH_TOKEN: ${{ github.token }}
-        run: mkdir -p catalogs/fresh-powder/data && gh release download latest-data --repo lifan-builds/snow-deal-data --pattern deals.db --dir catalogs/fresh-powder/data
+        run: mkdir -p catalogs/fresh-powder/data && gh release download latest-data --repo lifan-builds/clearcut-data --pattern deals.db --dir catalogs/fresh-powder/data
       - name: Determine scraper runtime
         id: scraper-runtime
         env:
@@ -75,8 +75,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
         run: |
-          gh release upload latest-data catalogs/fresh-powder/data/deals.db --clobber --repo lifan-builds/snow-deal-data
-          gh release edit latest-data --repo lifan-builds/snow-deal-data --notes "Validated snapshot from run $GITHUB_RUN_ID"
+          gh release upload latest-data catalogs/fresh-powder/data/deals.db --clobber --repo lifan-builds/clearcut-data
+          gh release edit latest-data --repo lifan-builds/clearcut-data --notes "Validated snapshot from run $GITHUB_RUN_ID"
       - name: Deploy fresh data to Vercel
         env:
           VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
