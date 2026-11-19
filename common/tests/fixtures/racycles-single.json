@@ -1,0 +1,73 @@
+{
+  "id": 8467804258348,
+  "title": "OPEN WI.DE. Force AXS Bike - 700c w/ENVE Kit",
+  "handle": "open-wide-force-axs-bike-700c-wenve-kit",
+  "published_at": "2026-08-20T16:04:25-04:00",
+  "created_at": "2026-08-20T16:04:20-04:00",
+  "vendor": "OPEN",
+  "type": "Gravel Bikes",
+  "tags": [
+    "Bikes",
+    "Gravel Bikes",
+    "Open Bikes"
+  ],
+  "price": 550000,
+  "price_min": 550000,
+  "price_max": 550000,
+  "available": true,
+  "price_varies": false,
+  "compare_at_price": 760000,
+  "compare_at_price_min": 760000,
+  "compare_at_price_max": 760000,
+  "compare_at_price_varies": false,
+  "variants": [
+    {
+      "id": 46007234723884,
+      "title": "Grey / M",
+      "option1": "Grey",
+      "option2": "M",
+      "option3": null,
+      "sku": "OPENWIDEMAXSENV29GRY",
+      "requires_shipping": true,
+      "taxable": true,
+      "available": true,
+      "name": "OPEN WI.DE. Force AXS Bike - 700c w/ENVE Kit - Grey / M",
+      "public_title": "Grey / M",
+      "options": [
+        "Grey",
+        "M"
+      ],
+      "price": 550000,
+      "weight": 18144,
+      "compare_at_price": 760000,
+      "inventory_management": "shopify",
+      "barcode": null,
+      "quantity_rule": {
+        "min": 1,
+        "max": null,
+        "increment": 1
+      },
+      "quantity_price_breaks": [],
+      "requires_selling_plan": false,
+      "selling_plan_allocations": []
+    }
+  ],
+  "options": [
+    {
+      "name": "Color",
+      "position": 1,
+      "values": [
+        "Grey"
+      ]
+    },
+    {
+      "name": "Size",
+      "position": 2,
+      "values": [
+        "M"
+      ]
+    }
+  ],
+  "url": "/products/open-wide-force-axs-bike-700c-wenve-kit",
+  "requires_selling_plan": false
+}

@@ -11,6 +11,8 @@ from deal_common.parsers.common import parse_price
 from deal_common.parsers.shopify import ShopifyParser, _products_json
 
 HOST = 'racycles.com'
+_LOCATION_STATES = frozenset({'in', 'low-1', 'low-2', 'out', 'none'})
+_SIZE_OPTIONS = frozenset({'size', 'frame size', 'framesize', 'bike size'})
 
 
 def _one(values, label):
@@ -34,6 +36,8 @@ def _json(text):
 
 
 def _money(value):
+    if isinstance(value, bool):
+        raise TypeError('Invalid RA price')
     text = str(value).strip()
     if not re.fullmatch(r'\$?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?', text):
         raise ValueError('Invalid RA price')
@@ -49,17 +53,6 @@ def _minor(value, *, reference=False):
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError('Invalid RA minor-unit price')
     return value / 100
-
-
-def _visible_money(node):
-    # This theme renders $2,799<sup>99</sup>; joining text loses the decimal point.
-    copy = BeautifulSoup(str(node), 'html.parser')
-    cents = copy.select('sup')
-    if len(cents) != 1 or not re.fullmatch(r'\d{2}', cents[0].get_text(strip=True)):
-        raise ValueError('Invalid RA displayed cents')
-    value = cents[0].get_text(strip=True)
-    cents[0].extract()
-    return _money(copy.get_text('', strip=True) + '.' + value)
 
 
 def _destination(url, canonical):
@@ -81,147 +74,243 @@ def detail_data(html: str, page_url: str, raw: dict | None = None) -> dict:
     canonical = _one((n.get('href') for n in soup.select('link[rel="canonical"]')), 'canonical')
     if canonical != f'https://{HOST}{parts.path}':
         raise ValueError('RA canonical identity mismatch')
-    main = _one(soup.select('div.product-info[id^="product-info-template-"]'), 'purchase panel')
-    name = _one((n.get_text(' ', strip=True) for n in main.select('h1.product-title')), 'title')
-    picker = _one(main.select('variant-picker'), 'variant picker')
-    if picker.get('data-url') != parts.path:
-        raise ValueError('RA picker identity mismatch')
-    selected = _json(_one((n.get_text() for n in picker.select('script[type="application/json"]')), 'selected variant'))
-    if not isinstance(selected, dict):
-        raise TypeError('Invalid RA selected variant')
-    selected_key = str(selected.get('id'))
-    purchase_key = _one((n.get('value') for n in main.select('input[name="id"]')), 'purchase variant')
-    if not selected_key.isdigit() or purchase_key != selected_key:
-        raise ValueError('RA selected and purchase variant disagree')
-    selected_options = selected.get('options')
-    fields = picker.select('fieldset[data-option]')
-    if (not isinstance(selected_options, list) or len(fields) != len(selected_options)
-            or [n.get('data-index') for n in fields] != [str(i + 1) for i in range(len(fields))]
-            or [_one((n.get('value') for n in field.select('input[checked]')), 'checked option') for field in fields] != selected_options):
-        raise ValueError('RA checked options conflict with selected variant')
+    main = _one(soup.select('tp-product-info.tp-product'), 'purchase panel')
+    section_id = main.get('data-section-id', '')
+    if main.get('data-product-url') != parts.path or not section_id:
+        raise ValueError('RA purchase panel identity mismatch')
+    name = _one((n.get_text(' ', strip=True) for n in main.select('h1.tp-product__title')), 'title')
+    embedded = _json(_one((n.get_text() for n in main.select('script[data-product-json][type="application/json"]')), 'product data'))
+    if not isinstance(embedded, dict):
+        raise TypeError('Invalid RA product data')
+    product_id = str(embedded.get('id'))
+    option_names = embedded.get('options')
+    embedded_variants = embedded.get('variants')
+    if (not product_id.isdigit() or embedded.get('title') != name
+            or '/products/' + str(embedded.get('handle')) != parts.path
+            or embedded.get('requires_selling_plan') is not False
+            or not isinstance(option_names, list) or not option_names
+            or any(not isinstance(opt, str) or not opt.strip() for opt in option_names)
+            or not isinstance(embedded_variants, list) or not embedded_variants):
+        raise ValueError('RA embedded product identity mismatch')
+    form = _one(main.select('form.tp-buy__form[action="/cart/add"]'), 'purchase form')
+    if (_one((n.get('value') for n in form.select('input[name="product-id"]')), 'form product') != product_id
+            or _one((n.get('value') for n in form.select('input[name="section-id"]')), 'form section') != section_id):
+        raise ValueError('RA purchase form identity mismatch')
+    purchase_input = _one(form.select('input[name="id"][data-variant-id]'), 'purchase variant')
+    selected_key = purchase_input.get('value', '')
+    if not selected_key.isdigit():
+        raise ValueError('Invalid RA purchase variant')
     requested = parse_qs(parts.query).get('variant')
     if requested is not None and requested != [selected_key]:
         raise ValueError('RA requested variant not selected')
-    quantity = _one(main.select('input[name="quantity"]'), 'quantity')
+    quantity = _one(form.select('input[name="quantity"][data-qty-input]'), 'quantity')
     if quantity.get('value') != '1' or quantity.get('min') != '1':
         raise ValueError('Unsupported RA quantity')
-    status = _json(_one((n.get_text() for n in main.select('script.variant-status-map')), 'stock map'))
+    atc_button = _one(form.select('button[data-atc][name="add"]'), 'purchase button')
+    picker = _one(main.select('[data-variant-picker]'), 'variant picker')
+    fields = picker.select('fieldset[data-variant-option]')
+    picker_labels = [_one((n.get_text(' ', strip=True) for n in field.select('legend.tp-variant-picker__label')), 'option label')
+                     for field in fields]
+    checked_options = [_one((n.get('value') for n in field.select('input[data-option-input][checked]')), 'checked option')
+                       for field in fields]
+    if ([field.get('data-option-index') for field in fields] != [str(i) for i in range(len(fields))]
+            or picker_labels != option_names):
+        raise ValueError('RA option selectors conflict with product options')
+    recap = _one(main.select('[data-variant-recap]'), 'variant recap')
+    recap_sku = _one((n.get_text(' ', strip=True) for n in recap.select('[data-recap-sku]')), 'recap SKU')
+    recap_title = _one((n.get_text(' ', strip=True) for n in recap.select('[data-recap-title]')), 'recap option')
+    status = _json(_one((n.get_text() for n in main.select('script[data-variant-stock][type="application/json"]')), 'stock map'))
     if not isinstance(status, dict) or not status:
         raise ValueError('Invalid RA stock map')
-    groups = []
+    location_stock = _json(_one((n.get_text() for n in main.select('script[data-location-stock][type="application/json"]')), 'location stock'))
+    location_rows = main.select('[data-inventory-locations] [data-location-row]')
+    if not isinstance(location_stock, dict) or not location_rows:
+        raise ValueError('Invalid RA location stock')
+    stock_box = _one(main.select('[data-stock-status]'), 'stock status')
+    stock_lines = {}
+    visible_lines = []
+    for line in stock_box.select('[data-stock-line]'):
+        code = line.get('data-stock-line', '')
+        text = line.get_text(' ', strip=True)
+        if not code or code in stock_lines or not text:
+            raise ValueError('Invalid RA stock status line')
+        stock_lines[code] = text
+        if not line.has_attr('hidden'):
+            visible_lines.append(code)
+    if stock_lines.get('in') != 'In Stock Ships Immediately':
+        raise ValueError('RA immediate stock wording changed')
+    virtual_notice = stock_lines.get('vw', '')
+    if not virtual_notice or 'sold out' in virtual_notice.casefold() or 'soldout' not in stock_lines:
+        raise ValueError('Missing RA virtual warehouse or sold-out notice')
+    schemas = []
     for script in soup.select('script[type="application/ld+json"]'):
         value = _json(script.get_text())
-        if isinstance(value, dict) and value.get('@type') == 'ProductGroup':
-            groups.append(value)
-    group = _one(groups, 'product group')
-    product_id = str(group.get('productGroupID'))
-    if not product_id.isdigit() or group.get('name') != name or group.get('url') != canonical:
-        raise ValueError('RA product group identity mismatch')
-    schema_variants = group.get('hasVariant')
-    if not isinstance(schema_variants, list) or not schema_variants:
-        raise ValueError('Missing RA complete variant schema')
+        if isinstance(value, dict) and value.get('@type') in {'ProductGroup', 'Product'}:
+            schemas.append(value)
+    schema = _one(schemas, 'product schema')
+    schema_by_key = {}
+    if schema['@type'] == 'ProductGroup':
+        if str(schema.get('productGroupID')) != product_id or schema.get('name') != name or schema.get('url') != canonical:
+            raise ValueError('RA product group identity mismatch')
+        schema_variants = schema.get('hasVariant')
+        if not isinstance(schema_variants, list) or not schema_variants:
+            raise ValueError('Missing RA complete variant schema')
+        for child in schema_variants:
+            if not isinstance(child, dict) or child.get('@type') != 'Product' or not isinstance(child.get('offers'), dict):
+                raise ValueError('Invalid RA variant schema')
+            offer = child['offers']
+            key = _destination(offer.get('url', ''), canonical)
+            if key in schema_by_key or offer.get('priceCurrency') != 'USD' or not child.get('sku'):
+                raise ValueError('Duplicate RA variant or unsupported currency/SKU')
+            schema_by_key[key] = {
+                'url': offer['url'], 'sku': child['sku'], 'name': child.get('name'),
+                'price': _money(offer.get('price')),
+                'availability': offer.get('availability', '').rsplit('/', 1)[-1],
+            }
+    else:
+        if len(embedded_variants) != 1 or not isinstance(embedded_variants[0], dict):
+            raise ValueError('RA single-product schema on multi-variant product')
+        key = str(embedded_variants[0].get('id'))
+        offer = schema.get('offers')
+        if (not key.isdigit() or schema.get('name') != name or schema.get('url') != canonical
+                or not schema.get('sku') or not isinstance(offer, dict) or offer.get('@type') != 'Offer'
+                or offer.get('url') != canonical or offer.get('priceCurrency') != 'USD'):
+            raise ValueError('Invalid RA single-product schema')
+        schema_by_key[key] = {
+            'url': f'{canonical}?variant={key}', 'sku': schema['sku'],
+            'name': f"{name} - {' / '.join(embedded_variants[0].get('options') or [])}",
+            'price': _money(offer.get('price')),
+            'availability': offer.get('availability', '').rsplit('/', 1)[-1],
+        }
+    size_positions = [i for i, opt in enumerate(option_names) if opt.casefold() in _SIZE_OPTIONS]
     variants = {}
-    for child in schema_variants:
-        if not isinstance(child, dict) or child.get('@type') != 'Product' or not isinstance(child.get('offers'), dict):
-            raise ValueError('Invalid RA variant schema')
-        offer = child['offers']
-        key = _destination(offer.get('url', ''), canonical)
-        if key in variants or offer.get('priceCurrency') != 'USD' or not child.get('sku'):
-            raise ValueError('Duplicate RA variant or unsupported currency/SKU')
-        state = status.get(key)
-        if (not isinstance(state, dict) or type(state.get('available')) is not bool
-                or type(state.get('vw')) is not bool or isinstance(state.get('qty'), bool)
-                or not isinstance(state.get('qty'), (int, float)) or not math.isfinite(state['qty'])):
+    for item in embedded_variants:
+        if not isinstance(item, dict):
+            raise TypeError('Invalid RA embedded variant')
+        key = str(item.get('id'))
+        if key not in schema_by_key or key in variants:
+            raise ValueError('Incomplete or duplicate RA variant identity')
+        schema_row = schema_by_key[key]
+        state_code = status.get(key)
+        if not isinstance(state_code, str) or not (
+                state_code in {'in', 'vw', 'soldout'} or re.fullmatch(r'bo-[1-9]\d*', state_code)):
             raise ValueError('Missing or malformed RA variant stock')
-        schema_state = offer.get('availability', '').rsplit('/', 1)[-1]
-        if schema_state not in {'InStock', 'OutOfStock'} or (schema_state == 'InStock') != state['available']:
+        if state_code.startswith('bo-') and state_code not in stock_lines:
+            raise ValueError('RA missing backorder notice')
+        locs = location_stock.get(key)
+        if (not isinstance(locs, list) or len(locs) != len(location_rows)
+                or any(loc not in _LOCATION_STATES for loc in locs)):
+            raise ValueError('Missing or malformed RA location stock')
+        available = item.get('available')
+        if type(available) is not bool:
+            raise ValueError('Invalid RA variant availability')
+        expected_stock = ((False, 'OutOfStock') if state_code == 'soldout'
+                          else (True, 'BackOrder') if state_code.startswith('bo-')
+                          else (True, 'InStock'))
+        if (available, schema_row['availability']) != expected_stock:
             raise ValueError('Conflicting RA structured stock')
-        variants[key] = {'url': offer['url'], 'sku': child['sku'], 'name': child.get('name'),
-                         'price': _money(offer.get('price')), 'reference': None,
-                         'available': state['available'], 'qty': state['qty'], 'virtual_warehouse': state['vw'],
-                         'in_stock': state['available'] and state['qty'] > 0 and not state['vw'],
-                         'options': None, 'size': None}
-    if set(variants) != set(status) or selected_key not in variants:
+        options = item.get('options')
+        price = _minor(item.get('price'))
+        reference = _minor(item.get('compare_at_price'), reference=True)
+        if (not isinstance(options, list) or len(options) != len(option_names)
+                or any(not isinstance(v, str) or not v for v in options)
+                or item.get('title') != ' / '.join(options)
+                or item.get('name') != name + ' - ' + ' / '.join(options)
+                or schema_row['name'] != item['name']
+                or item.get('sku') != schema_row['sku']
+                or price != schema_row['price']
+                or item.get('requires_selling_plan') is not False
+                or item.get('quantity_rule', {}).get('min') != 1
+                or item.get('quantity_rule', {}).get('increment') != 1):
+            raise ValueError('RA embedded and structured variant conflict')
+        variants[key] = {
+            'url': schema_row['url'], 'sku': schema_row['sku'], 'name': schema_row['name'],
+            'price': price, 'reference': reference, 'available': available,
+            'stock_state': state_code, 'location_stock': locs,
+            'virtual_warehouse': state_code == 'vw', 'in_stock': state_code == 'in',
+            'options': ' / '.join(v for v in options if v != 'Default Title'),
+            'raw_options': options,
+            'size': ' / '.join(options[i] for i in size_positions) or None,
+        }
+    if (set(variants) != set(schema_by_key) or set(variants) != set(status)
+            or set(variants) != set(location_stock) or selected_key not in variants):
         raise ValueError('Incomplete RA variant identity sets')
-    active = [n for n in main.select('.in-stock-message') if not n.has_attr('hidden')]
-    backorders = main.select('.product-backorder .backorder')
-    visible_backorders = [n for n in backorders if not n.has_attr('hidden')]
     state = variants[selected_key]
-    expected_class = ('in-stock-message--soldout' if not state['available'] else
-                      'in-stock-message--vw' if state['virtual_warehouse'] else
-                      'in-stock-message--immediate' if state['qty'] > 0 else None)
-    if expected_class is None:
-        if active or len(visible_backorders) != 1 or not visible_backorders[0].get_text(' ', strip=True):
-            raise ValueError('RA missing selected backorder evidence')
-    elif (len(active) != 1 or expected_class not in active[0].get('class', []) or visible_backorders):
+    if (checked_options != state['raw_options'] or recap_sku != state['sku']
+            or recap_title != ' / '.join(state['raw_options'])):
+        raise ValueError('RA checked options conflict with selected variant')
+    if (purchase_input.has_attr('disabled') != (not state['available'])
+            or atc_button.has_attr('disabled') != (not state['available'])):
+        raise ValueError('RA purchase controls conflict with availability')
+    if stock_box.get('data-state') != state['stock_state'] or visible_lines != [state['stock_state']]:
         raise ValueError('RA displayed stock conflicts with selected variant')
-    virtual_notice = _one(main.select('.in-stock-message--vw'), 'virtual warehouse notice').get_text(' ', strip=True)
-    if not virtual_notice:
-        raise ValueError('Missing RA virtual warehouse notice')
-    if state['in_stock'] and active[0].get_text(' ', strip=True) != 'In Stock Ships Immediately':
-        raise ValueError('RA immediate stock wording changed')
-    backorder_boxes = main.select('.product-backorder .backorder .custom-backorder-message')
-    backorder_note = ''
-    if backorder_boxes:
-        box = _one(backorder_boxes, 'backorder notice')
-        # This hidden label names the currently selected size, not the shared notice.
-        for title in box.select('.backorder__product'):
-            title.decompose()
-        backorder_note = box.get_text(' ', strip=True)
-    price_node = _one(main.select('.product-info__price .price__current .js-value'), 'displayed price')
-    refs = main.select('.product-info__price .price__was .js-value')
-    reference = _visible_money(_one(refs, 'displayed reference')) if refs else None
-    if (state['price'] != _minor(selected.get('price')) or state['price'] != _visible_money(price_node)
-            or reference != _minor(selected.get('compare_at_price'), reference=True)
-            or state['sku'] != selected.get('sku') or state['available'] != selected.get('available')):
+    for index, row in enumerate(location_rows):
+        visible_loc = [n.get('data-location-state')
+                       for n in row.select('.tp-inventory-location__state[data-location-state]')
+                       if not n.has_attr('hidden')]
+        if visible_loc != [state['location_stock'][index]]:
+            raise ValueError('RA displayed location stock conflicts with selected variant')
+    price_box = _one(main.select('[data-product-price]'), 'price panel')
+    current_box = _one(price_box.select('[data-price-current]'), 'displayed current price')
+    displayed_price = _money(_one((n.get_text(' ', strip=True) for n in current_box.select('[data-price-amount]')), 'displayed price'))
+    if displayed_price != state['price']:
         raise ValueError('RA selected identity, price or reference conflict')
-    if selected.get('requires_selling_plan') is not False or selected.get('quantity_rule', {}).get('min') != 1:
-        raise ValueError('Unsupported RA selling plan or minimum quantity')
+    compare_nodes = price_box.select('[data-price-compare]')
+    visible_compares = [n for n in compare_nodes if not n.has_attr('hidden')]
+    on_sale = state['reference'] is not None and state['reference'] > state['price']
+    if ('tp-product__price-current--sale' in (current_box.get('class') or [])) != on_sale:
+        raise ValueError('RA selected identity, price or reference conflict')
+    if on_sale:
+        compare_box = _one(visible_compares, 'displayed reference')
+        displayed_ref = _money(_one((n.get_text(' ', strip=True) for n in compare_box.select('[data-price-amount]')), 'displayed reference amount'))
+        if displayed_ref != state['reference']:
+            raise ValueError('RA selected identity, price or reference conflict')
+    elif visible_compares:
+        raise ValueError('RA selected identity, price or reference conflict')
     if raw is not None:
         if (not isinstance(raw, dict) or str(raw.get('id')) != product_id or raw.get('title') != name
                 or '/products/' + str(raw.get('handle')) != parts.path or not isinstance(raw.get('variants'), list)):
             raise ValueError('RA product endpoint identity mismatch')
         option_defs = raw.get('options')
-        if not isinstance(option_defs, list) or any(not isinstance(n, dict) or not n.get('name') for n in option_defs):
-            raise ValueError('Missing RA option definitions')
-        if [n['name'] for n in option_defs] != [field.get('data-option') for field in fields]:
+        if (not isinstance(option_defs, list)
+                or any(not isinstance(n, dict) or not n.get('name') for n in option_defs)
+                or [n['name'] for n in option_defs] != option_names):
             raise ValueError('RA option definitions conflict with visible selectors')
-        size_positions = [i for i, n in enumerate(option_defs) if n['name'].casefold() in {'size', 'frame size', 'bike size'}]
         seen = set()
         for item in raw['variants']:
+            if not isinstance(item, dict):
+                raise TypeError('RA endpoint and purchase variant conflict')
             key = str(item.get('id'))
             if key not in variants or key in seen:
                 raise ValueError('RA product endpoint variant identity mismatch')
             seen.add(key)
             actual = variants[key]
-            options = item.get('options')
-            if (not isinstance(options, list) or len(options) != len(option_defs)
-                    or any(not isinstance(v, str) for v in options)
+            if (item.get('options') != actual['raw_options']
                     or item.get('sku') != actual['sku'] or item.get('available') != actual['available']
                     or _minor(item.get('price')) != actual['price']
+                    or _minor(item.get('compare_at_price'), reference=True) != actual['reference']
+                    or item.get('name') != actual['name']
                     or item.get('requires_selling_plan') is not False
                     or item.get('quantity_rule', {}).get('min') != 1
                     or item.get('quantity_rule', {}).get('increment') != 1):
                 raise ValueError('RA endpoint and purchase variant conflict')
-            if actual['name'] != name + ' - ' + ' / '.join(options):
-                raise ValueError('RA option identity mismatch')
-            actual.update(reference=_minor(item.get('compare_at_price'), reference=True),
-                          options=' / '.join(v for v in options if v != 'Default Title'),
-                          size=' / '.join(options[i] for i in size_positions) or None)
-        if seen != set(variants) or variants[selected_key]['reference'] != reference:
-            raise ValueError('Incomplete RA endpoint variants or reference conflict')
-        if selected.get('options') != raw['variants'][next(i for i, v in enumerate(raw['variants']) if str(v['id']) == selected_key)].get('options'):
-            raise ValueError('RA selected options conflict')
-    else:
-        state.update(reference=reference, options=' / '.join(selected.get('options') or []))
-    final_sale = [n.get_text(' ', strip=True) for n in main.select('.product-info__disclosure')
-                  if 'final sale' in n.get_text(' ', strip=True).casefold()]
+        if seen != set(variants):
+            raise ValueError('Incomplete RA endpoint variants')
+    final_sale = [
+        _one((t.get_text(' ', strip=True) for t in node.select('.tp-product__accordion-title')), 'final-sale title')
+        for node in main.select('details.tp-product__accordion')
+        if 'tp-final-sale' in (node.get('class') or [])
+        or 'final sale' in node.get_text(' ', strip=True).casefold()
+    ]
     sale_note = _one(final_sale, 'final-sale notice') if final_sale else ''
+    if sale_note and 'final sale' not in sale_note.casefold():
+        raise ValueError('Invalid RA final-sale notice')
     for variant in variants.values():
-        notice = virtual_notice if variant['virtual_warehouse'] else ''
-        if variant['available'] and not variant['in_stock'] and not notice:
-            notice = backorder_note or 'Stock not confirmed by the retailer.'
+        code = variant['stock_state']
+        notice = (virtual_notice if variant['virtual_warehouse']
+                  else stock_lines[code] if code.startswith('bo-') else '')
         variant['shipping_note'] = ' '.join(n for n in (notice, sale_note) if n)
+        variant.pop('raw_options', None)
     return {'url': canonical, 'name': name, 'product_id': product_id, 'currency': 'USD',
             'selected_key': selected_key, 'variants': variants, 'final_sale_note': sale_note}
 
@@ -277,5 +366,7 @@ class RacyclesShopifyParser(ShopifyParser):
         if not offers:
             return []
         best = min(offers, key=lambda o: (-o.discount_pct, o.current_price, o.variant_key))
+        sizes = list(dict.fromkeys(o.size for o in offers if o.size
+                                   and (o.current_price, o.original_price) == (best.current_price, best.original_price)))
         return [replace(product, current_price=best.current_price, original_price=best.original_price,
-                        image_url=best.image_url, offers=offers)]
+                        sizes=sizes or None, image_url=best.image_url, offers=offers)]

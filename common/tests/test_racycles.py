@@ -33,35 +33,48 @@ def feed(raw=RAW):
     return json.dumps({'products': [item]})
 
 
-def parser(raw=RAW):
+def parser(raw=RAW, url=COLLECTION):
     p = RacyclesShopifyParser(size_option_names=CATALOG.size_option_names,
                              size_value_pattern=CATALOG.size_value_pattern)
-    p.parse_listing_page(feed(raw), COLLECTION)
+    p.parse_listing_page(feed(raw), url)
     return p
 
 
-def parse(html=HTML, raw=RAW):
-    return parser(raw).parse_product_evidence(html, URL + '?currency=USD', json.dumps(raw))
+def parse(html=HTML, raw=RAW, page_url=URL):
+    return parser(raw).parse_product_evidence(html, page_url + '?currency=USD', json.dumps(raw))
 
 
-def change(html=HTML, *, status=None, group=None, selected=None):
+def change(html=HTML, *, status=None, locations=None, embedded=None, group=None, visible_state=None):
     soup = BeautifulSoup(html, 'html.parser')
     if status:
-        node = soup.select_one('script.variant-status-map')
+        node = soup.select_one('script[data-variant-stock]')
         value = json.loads(node.string)
         status(value)
+        node.string = json.dumps(value)
+    if locations:
+        node = soup.select_one('script[data-location-stock]')
+        value = json.loads(node.string)
+        locations(value)
+        node.string = json.dumps(value)
+    if embedded:
+        node = soup.select_one('script[data-product-json]')
+        value = json.loads(node.string)
+        embedded(value)
         node.string = json.dumps(value)
     if group:
         for node in soup.select('script[type="application/ld+json"]'):
             value = json.loads(node.string)
-            if value['@type'] == 'ProductGroup':
+            if value['@type'] in {'ProductGroup', 'Product'}:
                 group(value)
                 node.string = json.dumps(value)
-    if selected:
-        node = soup.select_one('variant-picker script[type="application/json"]')
-        value = json.loads(node.string)
-        selected(value)
-        node.string = json.dumps(value)
+    if visible_state is not None:
+        box = soup.select_one('[data-stock-status]')
+        box['data-state'] = visible_state
+        for line in box.select('[data-stock-line]'):
+            if line['data-stock-line'] == visible_state:
+                line.attrs.pop('hidden', None)
+            else:
+                line['hidden'] = ''
     return str(soup)
 
 
@@ -81,40 +94,67 @@ def test_exact_variants_and_final_sale_disclosure_preserved():
         p.parse_product_page(HTML, URL)
 
 
+def test_single_variant_product_schema_binds_exact_variant_and_location_stock():
+    single_html = (FIXTURES / 'racycles-single.html').read_text()
+    single_raw = json.loads((FIXTURES / 'racycles-single.json').read_text())
+    single_url = 'https://racycles.com/products/' + single_raw['handle']
+    products = parse(single_html, single_raw, single_url)
+    assert len(products) == 1
+    offer = products[0].offers[0]
+    assert (offer.variant_key, offer.current_price, offer.original_price, offer.size) == (
+        '46007234723884', 5500, 7600, 'M')
+    assert offer.availability == 'in_stock'
+    assert 'Final Sale' in offer.availability_note
+
+
 def test_virtual_warehouse_overrides_available_without_copying_hidden_immediate_message():
-    html = change(status=lambda status: status[KEY].update(vw=True))
-    soup = BeautifulSoup(html, 'html.parser')
-    soup.select_one('.in-stock-message--immediate')['hidden'] = ''
-    del soup.select_one('.in-stock-message--vw')['hidden']
-    product = parse(str(soup))[0]
+    html = change(status=lambda status: status.update({KEY: 'vw'}), visible_state='vw')
+    product = parse(html)[0]
     assert product.offers[0].availability == 'unknown'
     assert '1-2 weeks' in product.offers[0].availability_note
     assert 'Final Sale' in product.offers[0].availability_note
 
 
-def test_preorder_available_with_zero_quantity_never_confirms_stock():
-    html = change(status=lambda status: status[KEY].update(qty=0))
-    soup = BeautifulSoup(html, 'html.parser')
-    soup.select_one('.in-stock-message--immediate')['hidden'] = ''
-    soup.select_one('div.product-info').append(BeautifulSoup(
-        '<div class="product-backorder"><div class="backorder"><div class="custom-backorder-message">'
-        'Coming soon! A sales associate will contact you with the shipping date.'
-        '</div></div></div>', 'html.parser'))
+def test_backorder_state_never_confirms_immediate_stock_and_requires_matching_notice():
+    html_missing_notice = change(
+        status=lambda status: status.update({KEY: 'bo-1'}),
+        group=lambda g: g['hasVariant'][5]['offers'].update(availability='https://schema.org/BackOrder'),
+    )
+    with pytest.raises(ValueError, match='missing backorder notice'):
+        parse(html_missing_notice)
+
+    soup = BeautifulSoup(html_missing_notice, 'html.parser')
+    box = soup.select_one('[data-stock-status]')
+    box['data-state'] = 'bo-1'
+    soup.select_one('[data-stock-line="in"]')['hidden'] = ''
+    box.append(BeautifulSoup(
+        '<div class="tp-stock-status__line tp-stock-status__line--backorder" data-stock-line="bo-1">'
+        'Coming soon! A sales associate will contact you with the shipping date.</div>',
+        'html.parser',
+    ))
     offer = parse(str(soup))[0].offers[0]
     assert offer.availability == 'unknown' and 'Coming soon!' in offer.availability_note
-    with pytest.raises(ValueError, match='backorder evidence'):
-        parse(html)
 
 
 def test_explicit_unavailable_detail_excludes_offer_even_when_feed_remains_available():
     raw = deepcopy(RAW)
     raw['variants'][5]['available'] = False
-    html = change(status=lambda status: status[KEY].update(qty=0, available=False),
-                  selected=lambda selected: selected.update(available=False),
-                  group=lambda group: group['hasVariant'][5]['offers'].update(availability='https://schema.org/OutOfStock'))
+    html = change(
+        status=lambda status: status.update({KEY: 'soldout'}),
+        locations=lambda locs: locs.update({KEY: ['out', 'out', 'out', 'out']}),
+        embedded=lambda emb: emb['variants'][5].update(available=False),
+        group=lambda g: g['hasVariant'][5]['offers'].update(availability='https://schema.org/OutOfStock'),
+        visible_state='soldout',
+    )
     soup = BeautifulSoup(html, 'html.parser')
-    soup.select_one('.in-stock-message--immediate')['hidden'] = ''
-    del soup.select_one('.in-stock-message--soldout')['hidden']
+    soup.select_one('input[name="id"][data-variant-id]')['disabled'] = ''
+    soup.select_one('button[data-atc][name="add"]')['disabled'] = ''
+    for row in soup.select('[data-inventory-locations] [data-location-row]'):
+        for st in row.select('.tp-inventory-location__state[data-location-state]'):
+            if st['data-location-state'] == 'out':
+                st.attrs.pop('hidden', None)
+            else:
+                st['hidden'] = ''
     assert parser().parse_product_evidence(str(soup), URL + '?currency=USD', json.dumps(raw)) == []
 
 
@@ -124,23 +164,36 @@ def two_discounted(*, selected_full_price=False):
     first.update(price=100000, compare_at_price=1000000, available=True)
     if selected_full_price:
         raw['variants'][5]['compare_at_price'] = None
-    def group(value):
-        value['hasVariant'][0]['offers'].update(price='1000.00', availability='https://schema.org/InStock')
-    html = change(status=lambda status: status[str(first['id'])].update(qty=1, available=True), group=group)
+
+    def update_embedded(emb):
+        emb['variants'][0].update(price=100000, compare_at_price=1000000, available=True)
+        if selected_full_price:
+            emb['variants'][5]['compare_at_price'] = None
+
+    def update_group(value):
+        value['hasVariant'][0]['offers'].update(price=1000.0, availability='https://schema.org/InStock')
+
+    html = change(
+        status=lambda status: status.update({str(first['id']): 'in'}),
+        embedded=update_embedded,
+        group=update_group,
+    )
     if selected_full_price:
-        html = change(html, selected=lambda selected: selected.update(compare_at_price=None))
         soup = BeautifulSoup(html, 'html.parser')
-        soup.select_one('.price__was').decompose()
+        current = soup.select_one('[data-price-current]')
+        current['class'] = [c for c in current.get('class', []) if c != 'tp-product__price-current--sale']
+        soup.select_one('[data-price-compare]')['hidden'] = ''
         html = str(soup)
     return raw, html
 
 
 def test_multiple_discount_prices_remain_bound_to_each_exact_size():
     raw, html = two_discounted()
-    offers = parse(html, raw)[0].offers
-    assert [(o.variant_key, o.current_price, o.original_price, o.size) for o in offers] == [
+    product = parse(html, raw)[0]
+    assert [(o.variant_key, o.current_price, o.original_price, o.size) for o in product.offers] == [
         ('44030761631788', 1000, 10000, 'XXS'), (KEY, 2799.99, 5999, '61cm')]
-    assert parse(html, raw)[0].current_price == 1000
+    assert product.current_price == 1000
+    assert product.sizes == ['XXS']
 
 
 def test_selected_full_price_variant_does_not_hide_another_discounted_variant():
@@ -151,16 +204,23 @@ def test_selected_full_price_variant_does_not_hide_another_discounted_variant():
 
 @pytest.mark.parametrize('mutation', [
     lambda status: status.pop(KEY),
-    lambda status: status.update({'999': {'qty': 1, 'vw': False, 'available': True}}),
-    lambda status: status[KEY].update(qty=True),
-    lambda status: status[KEY].update(qty=float('nan')),
-    lambda status: status[KEY].update(vw='false'),
-    lambda status: status[KEY].update(available=1),
-    lambda status: status[KEY].update(available=False),
+    lambda status: status.update({'999': 'in'}),
+    lambda status: status.update({KEY: True}),
+    lambda status: status.update({KEY: 'unknown'}),
+    lambda status: status.update({KEY: 'bo-0'}),
+    lambda status: status.update({KEY: 'soldout'}),
+    lambda status: status.update({KEY: 'vw'}),
 ])
 def test_missing_ambiguous_or_conflicting_stock_cannot_complete(mutation):
     with pytest.raises((ValueError, TypeError)):
         parse(change(status=mutation))
+
+
+def test_location_stock_mismatch_is_rejected():
+    with pytest.raises(ValueError, match='location stock'):
+        parse(change(locations=lambda locs: locs.update({KEY: ['in', 'out', 'low-1', 'out']})))
+    with pytest.raises(ValueError, match='location stock'):
+        parse(change(locations=lambda locs: locs.update({KEY: ['invalid', 'out', 'low-1', 'out']})))
 
 
 @pytest.mark.parametrize('mutation', [
@@ -182,10 +242,10 @@ def test_endpoint_identity_price_reference_and_options_must_agree(mutation):
 
 @pytest.mark.parametrize(('before', 'after'), [
     ('"priceCurrency": "USD"', '"priceCurrency": "CAD"'),
-    ('<sup>99</sup>', '<sup>98</sup>'),
+    ('$2,799.99', '$2,799.98'),
     ('value="' + KEY + '"', 'value="999"'),
     ('checked=""', ''),
-    ('data-option="Size"', 'data-option="Wheel Size"'),
+    ('<legend class="tp-variant-picker__label">Size</legend>', '<legend class="tp-variant-picker__label">Wheel Size</legend>'),
     ('https://racycles.com/products/', 'https://evil.example/products/'),
 ])
 def test_displayed_identity_currency_options_and_cents_are_not_assumed(before, after):
@@ -198,8 +258,8 @@ def test_wrong_requested_variant_and_duplicate_stock_key_are_rejected():
     with pytest.raises(ValueError, match='requested variant'):
         detail_data(HTML, URL + '?variant=999', RAW)
     soup = BeautifulSoup(HTML, 'html.parser')
-    node = soup.select_one('script.variant-status-map')
-    node.string = '{"' + KEY + '":{},"' + KEY + '":{}}'
+    node = soup.select_one('script[data-variant-stock]')
+    node.string = '{"' + KEY + '":"in","' + KEY + '":"in"}'
     with pytest.raises(ValueError, match='Duplicate RA JSON key'):
         parse(str(soup))
 
@@ -209,6 +269,7 @@ def test_paced_detail_and_endpoint_failures_preserve_last_complete_snapshot(tmp_
     catalog = replace(CATALOG, sources=(source,))
     path = tmp_path / 'cycling.db'
     seen = []
+
     def handler(request):
         seen.append(str(request.url))
         if request.url.path.startswith('/collections/'):
@@ -218,6 +279,7 @@ def test_paced_detail_and_endpoint_failures_preserve_last_complete_snapshot(tmp_
         if request.url.path.endswith('.js'):
             return httpx.Response(200, json=RAW)
         return httpx.Response(200, text=HTML)
+
     report = asyncio.run(refresh(catalog, path, delay=0, transport=httpx.MockTransport(handler)))
     assert report[0]['status'] == 'complete'
     assert report[0]['product_pages'] == report[0]['evidence_requests'] == 1
@@ -225,10 +287,12 @@ def test_paced_detail_and_endpoint_failures_preserve_last_complete_snapshot(tmp_
     before = read_sources(path, 'cycling')[0]
     filters = {'min_reference': 1000, 'min_discount': 40, 'max_price': 0, 'stock': True, 'page': 1}
     assert query([before], filters)['total'] == 1
+
     def failed(request):
         if request.url.path.endswith('.js'):
             return httpx.Response(200, json={})
         return handler(request)
+
     report = asyncio.run(refresh(catalog, path, delay=0, transport=httpx.MockTransport(failed)))
     assert report[0]['status'] == 'incomplete'
     after = read_sources(path, 'cycling')[0]
@@ -237,11 +301,9 @@ def test_paced_detail_and_endpoint_failures_preserve_last_complete_snapshot(tmp_
 
 
 def test_virtual_warehouse_notice_tracks_actual_merchant_template():
-    html = change(status=lambda status: status[KEY].update(vw=True))
+    html = change(status=lambda status: status.update({KEY: 'vw'}), visible_state='vw')
     soup = BeautifulSoup(html, 'html.parser')
-    soup.select_one('.in-stock-message--immediate')['hidden'] = ''
-    node = soup.select_one('.in-stock-message--vw')
-    del node['hidden']
+    node = soup.select_one('[data-stock-line="vw"]')
     node.string = 'In Stock Ships in 3-4 weeks based on its location'
     note = parse(str(soup))[0].offers[0].availability_note
     assert '3-4 weeks' in note and '1-2 weeks' not in note
@@ -270,7 +332,7 @@ def test_observed_available_preorder_map_preserves_actual_reservation_notice():
     raw = json.loads((FIXTURES / 'racycles-backorder.json').read_text())
     actual = detail_data(html, 'https://racycles.com/products/' + raw['handle'], raw)
     assert len(actual['variants']) == 5
-    assert all(v['available'] and v['qty'] == 0 and not v['virtual_warehouse']
+    assert all(v['available'] and v['stock_state'] == 'bo-1' and not v['virtual_warehouse']
                and not v['in_stock'] for v in actual['variants'].values())
     for row in actual['variants'].values():
         assert row['shipping_note'].startswith('Coming soon! Reserve your Van Rysel')
@@ -301,12 +363,11 @@ def test_ra_independent_audit_binds_selected_size_and_virtual_warehouse():
     assert matched['status'] == 'match'
     assert matched['checks']['purchase_size'] and matched['checks']['purchase_stock']
     assert matched['purchase_panel']['sku'] == '9752ESDN29L'
+    assert matched['purchase_panel']['stock_state'] == 'in'
 
-    vw_soup = BeautifulSoup(change(status=lambda s: s[KEY].update(vw=True)), 'html.parser')
-    vw_soup.select_one('.in-stock-message--immediate')['hidden'] = ''
-    vw_soup.select_one('.in-stock-message--vw').attrs.pop('hidden', None)
+    vw_html = change(status=lambda s: s.update({KEY: 'vw'}), visible_state='vw')
     vw_result = asyncio.run(audit_sample([card], {'RA Cycles': 'racycles.com'},
-                                         delay=0, transport=httpx.MockTransport(make_handler(str(vw_soup)))))[0]
+                                         delay=0, transport=httpx.MockTransport(make_handler(vw_html))))[0]
     assert vw_result['status'] == 'mismatch'
     assert vw_result['checks']['stock'] is True and vw_result['checks']['purchase_stock'] is False
     assert vw_result['purchase_panel']['virtual_warehouse'] is True

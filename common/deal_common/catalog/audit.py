@@ -241,7 +241,7 @@ def validate_racycles_product(card: dict, product: dict) -> dict:
     }
     return {"status": "match" if all(checks.values()) else "mismatch", "checks": checks,
             "merchant": {key: actual[key] for key in ("sku", "price", "reference", "options", "size",
-                                                      "qty", "virtual_warehouse", "shipping_note")}}
+                                                      "stock_state", "location_stock", "virtual_warehouse", "shipping_note")}}
 
 
 def validate_beaver_product(card: dict, product: dict) -> dict:
