@@ -92,7 +92,7 @@ def test_persistent_429_aborts_remaining_collections_on_same_store():
 
     def handle(request):
         requests.append(request.url.path)
-        return httpx.Response(429, headers={"Retry-After": "20"})
+        return httpx.Response(429, headers={"Retry-After": "0"})
 
     async def run():
         outcome = {"errors": 0, "pages": 0}
@@ -125,6 +125,6 @@ def test_persistent_429_aborts_remaining_collections_on_same_store():
         http_mod.asyncio.sleep = orig_sleep
 
     assert products == []
-    assert len(requests) == 2
+    assert len(requests) == 4
     assert [c["status"] for c in outcome["collections"]] == ["http_error", "rate_limited", "rate_limited"]
     assert outcome["errors"] == 3

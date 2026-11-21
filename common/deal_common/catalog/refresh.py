@@ -95,7 +95,7 @@ def _build_parser(source, catalog: Catalog):
 
 
 async def refresh(catalog: Catalog, path: Path, *, max_pages: int = 30,
-                  delay: float = 1.5, concurrency: int = 3, transport=None) -> list[dict]:
+                  delay: float = 1.5, concurrency: int = 1, transport=None) -> list[dict]:
     for source in catalog.sources:
         if source.currency != "USD":
             raise ValueError("These catalogs accept USD sources only")
