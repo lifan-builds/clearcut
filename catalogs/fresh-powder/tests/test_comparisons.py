@@ -150,3 +150,24 @@ def test_catalog_cards_link_to_comparison_but_keep_retailer_action(comparison_db
 def test_wide_sizes_remain_distinct():
     assert comparisons.reported_sizes('156W cm, 160cm Wide, 158cm, 160W, 150-170cm') == ['156W', '158', '160W']
     assert '156' not in comparisons.reported_sizes('156W cm')
+
+
+def test_dynamic_multi_shop_grouping_surfaces_models_across_stores(tmp_path):
+    path = tmp_path / 'auto.db'
+    now = datetime.now(UTC).replace(tzinfo=None)
+    items = [
+        AggregatedDeal(None, 'Evo', 'Blizzard Anomaly 88 Skis 2025', 'https://evo.test/anomaly-88', 399, 800, 50.1, 'skis', '176cm, 182cm', 176, 182, now, brand='blizzard'),
+        AggregatedDeal(None, 'Backcountry', 'Blizzard Anomaly 88 All-Mountain Skis 2025', 'https://bc.test/anomaly-88', 429, 800, 46.4, 'skis', '176cm', 176, 176, now, brand='blizzard'),
+    ]
+
+    async def seed():
+        await db.init_db(path)
+        await db.upsert_deals(items, path)
+        summary = await comparisons.catalog_summary(db_path=path)
+        auto = [m for m in summary if m['slug'].startswith('auto-blizzard-anomaly-88')]
+        assert len(auto) == 1
+        assert auto[0]['store_count'] == 2
+        detail = await comparisons.product_detail(auto[0]['slug'], db_path=path)
+        assert [o['current_price'] for o in detail['offers']] == [399, 429]
+
+    asyncio.run(seed())

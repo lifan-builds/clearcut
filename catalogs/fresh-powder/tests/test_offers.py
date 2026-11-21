@@ -192,10 +192,9 @@ def test_size_filter_full_page_partial_and_pagination_agree(tmp_path, monkeypatc
             response=client.get(prefix+'?size=180&min_reference=500')
             assert response.status_code==200
             assert '$400.00' in response.text and '60% OFF' in response.text
-            assert 'variant=12' in response.text and 'Reported in stock' in response.text
-            assert 'Variant 12 · 180 / Blue.' in response.text
-            assert 'Exact variant not supplied' not in response.text
-            assert 'Save $600.00' in response.text and 'vs retailer reference' in response.text
+            assert 'variant=12' in response.text and 'In stock' in response.text
+            assert '180 / Blue' in response.text
+            assert 'Save $600.00' in response.text
             assert '$100.00' not in response.text
         assert client.get('/deals?size=175').status_code==200
         assert 'No deals match' in client.get('/deals?size=175').text

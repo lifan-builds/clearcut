@@ -1,13 +1,54 @@
 {% extends 'base.html' %}
-{% block content %}<main id="main" class="shell editorial methodology">
-<h1>Good deals need good evidence.</h1>
-<p class="lede">FreshPowder brings ski and snowboard retailer listings together so you can compare prices before buying directly from a shop.</p>
-<h2>One model, one season</h2><p>Our comparison catalog starts with a selected set of reviewed retailer titles and product links. We match the model and season, keeping women’s versions, different widths and equipment bundles separate. Conflicting or unclear listings stay outside the comparison. Retailer titles can still be wrong, so check the product details before buying.</p>
-<h2>Your size changes the deal</h2><p>Where a retailer supplies individual offers, choosing a size selects that variant’s price and markdown. Exact-size search includes only variants explicitly reported in stock. Other listings remain browseable with stock marked unknown. A listed price may apply only to certain sizes or colors. A length filter matches reported values, not every number between the shortest and longest ski. Missing sizes stay unknown. USD and CAD prices are compared separately, and shipping, duties and taxes are not included.</p>
-<h2>Model age stays visible</h2><p>Model-year labels and filters use years stated in product titles, including the explicitly labeled 00–01 season. The year filter excludes undated items. Older models remain included by default, and a large markdown does not establish condition or suitability.</p>
-<h2>A discount is not a price history</h2><p>A percentage off compares the current listing price with the retailer’s supplied list price. It is not proof that the product normally sells at that price. Our catalog’s default order puts the largest percentage markdown first. Images and reviews do not outrank the discount.</p><p>Comparison pages show actual price observations beginning when an offer was reviewed for that model. We exclude older history from potentially reused product URLs. The chart is the lowest observed listing price each recorded day; sizes and the set of shops may change. Short or incomplete history cannot establish a 30-day low, an all-time low or a rare deal.</p>
-<h2>Freshness you can inspect</h2><p>Snapshots are refreshed and validated before publishing, and listings older than 24 hours are excluded from current offers. Retailers can change prices or stock between checks. Partial and failed checks are visible in the <a href="/status">store report</a>; a failed check does not make an old price fresh again.</p>
-<h2>Reviews and recommendations</h2><p>Expert-review links lead to third-party publications. Their scores are attributed on the linked source; they are not FreshPowder customer ratings or evidence that we tested the gear ourselves. Price comparisons do not determine whether a product is the right fit for you.</p>
-<h2>Free browsing, optional signup</h2><p>Browsing and comparing do not require an account. <a href="/alerts">Rare-deal email alerts are coming soon</a>. Signing up records your interest; it does not activate email delivery yet. See our <a href="/privacy">privacy and removal information</a>.</p>
-<p><a class="button primary" href="/products">Compare models</a></p>
-</main>{% endblock %}
+{% block content %}
+<main id="main" class="shell catalog how-page">
+  <section class="world-hero" aria-labelledby="how-heading">
+    <img class="world-hero-img" src="/static/img/snow-banner.jpg" alt="" width="1536" height="960" fetchpriority="high" aria-hidden="true">
+    <div class="world-hero-scrim" aria-hidden="true"></div>
+    <div class="world-hero-copy">
+      <h1 id="how-heading">How we find the top deals.</h1>
+      <p>Every morning we scan 28+ North American ski and snowboard shops, match prices to your exact size, strip out spare-part clutter, and rank the biggest markdowns&nbsp;first.</p>
+      <div class="hero-pill-row">
+        <span class="hero-status-pill"><span class="pulse-dot" aria-hidden="true"></span><span>Daily automated refresh · USD &amp; CAD · <a href="/status">Tracked stores</a></span></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="how-grid" aria-label="How FreshPowder ranks deals">
+    <article class="how-card">
+      <span class="how-step">01 · Daily Shop Scans</span>
+      <h2>28+ snow shops in one place</h2>
+      <p>We pull daily catalog and clearance feeds from independent mountain shops and major North American outfitters across both USD and CAD so you don’t have to check two dozen tabs.</p>
+    </article>
+
+    <article class="how-card">
+      <span class="how-step">02 · Pure % Off Ranking</span>
+      <h2>Biggest markdowns at the top</h2>
+      <p>Deals sort strictly by percentage off—<code>(original − sale) ÷ original</code>—with bigger dollar savings breaking ties. No sponsored placements, and store links never boost a deal’s rank.</p>
+    </article>
+
+    <article class="how-card">
+      <span class="how-step">03 · Exact-Size Pricing</span>
+      <h2>No “60% off only in XXS” bait</h2>
+      <p>Enter your ski length, board width, or boot mondo size and we filter down to variants in stock in that size—updating the sale price, savings, and direct link to match.</p>
+    </article>
+
+    <article class="how-card">
+      <span class="how-step">04 · Hardgoods Only</span>
+      <h2>Zero spare-part clutter</h2>
+      <p>Replacement goggle lenses, brake arms, wax, mounting fees, kids’ sizing, and $15 shipping-protection add-ons are automatically filtered out so real skis, boards, and boots lead.</p>
+    </article>
+  </section>
+
+  <section class="how-cta-bar">
+    <div>
+      <h2>Compare the same model across shops.</h2>
+      <p>When multiple shops carry the same ski, snowboard, or boot, our comparison view lines up every store’s current price, available lengths, and daily price drops side by&nbsp;side.</p>
+    </div>
+    <div class="how-cta-buttons">
+      <a class="button primary" href="/">Browse top deals</a>
+      <a class="button secondary" href="/products">Compare models</a>
+      <a class="button secondary" href="/status">Tracked stores</a>
+    </div>
+  </section>
+</main>
+{% endblock %}

@@ -5,50 +5,43 @@
 <main id="main" class="shell editorial product-detail">
   <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/products">Compare models</a> / <a href="/brands/{{ brand_slug }}">{{ p.brand }}</a> / {{ p.name }}</nav>
   <section class="product-intro">
-    <div class="product-photo">{% if p.image %}<img src="{{ p.image }}" alt="{{ p.name }}" width="500" height="400" fetchpriority="high">{% else %}<img src="/static/img/alpine-gear.jpg" alt="" width="500" height="400">{% endif %}</div>
+    <div class="product-photo">{% if p.image %}<img src="{{ p.image }}" alt="{{ p.name }}" width="500" height="400" fetchpriority="high">{% else %}<img src="/static/img/snow-banner.jpg" alt="" width="500" height="400">{% endif %}</div>
     <div><h1>{{ p.name }}</h1>
-      <p class="lede">Compare the shops before you commit.</p>
-      {% if p.offers %}<p class="comparison-price">From <strong>{{ symbol }}{{ '%.2f'|format(p.offers[0].current_price) }}</strong> <span class="currency-tag">{{ p.currency }}</span></p><p>{{ p.store_count }} shop{{ '' if p.store_count == 1 else 's' }} · {{ p.offers|length }} recent listing{{ '' if p.offers|length == 1 else 's' }}{% if p.size %} reporting {{ p.size }} cm (W = wide){% endif %}</p>
-      {% else %}<p class="empty-offers">No recent offers{% if p.size %} reporting {{ p.size }} cm (W = wide){% endif %} in {{ p.currency }}. Try another currency or all sizes.</p>{% endif %}
-      <p>Retailer listing prices can vary by size. Shipping and taxes are not included. Confirm your chosen size, condition and final total at the shop.</p>
-      <div class="hero-actions"><a href="#offers" class="button primary">Compare offers</a> <button class="share-btn button secondary" type="button" data-url="{{ canonical_url }}" data-name="{{ p.name }}"><span class="share-label">Share comparison</span></button></div>
+      <p class="lede">Every tracked shop carrying this model, sorted lowest price first.</p>
+      {% if p.offers %}<p class="comparison-price">Best price: <strong>{{ symbol }}{{ '%.2f'|format(p.offers[0].current_price) }}</strong> <span class="currency-tag">{{ p.currency }}</span></p><p>{{ p.store_count }} shop{{ '' if p.store_count == 1 else 's' }} · {{ p.offers|length }} offer{{ '' if p.offers|length == 1 else 's' }}{% if p.size %} in {{ p.size }} cm{% endif %}</p>
+      {% else %}<p class="empty-offers">No recent offers{% if p.size %} in {{ p.size }} cm{% endif %} in {{ p.currency }}. Try another currency or all sizes.</p>{% endif %}
+      <div class="hero-actions"><a href="#offers" class="button primary">See shop prices</a> <button class="share-btn button secondary" type="button" data-url="{{ canonical_url }}" data-name="{{ p.name }}"><span class="share-label">Share</span></button></div>
     </div>
   </section>
-  <section class="comparison-section" aria-labelledby="scope-heading">
-    <h2 id="scope-heading">What this comparison covers</h2>
-    <p>This page compares reviewed listings for <strong>{{ p.name }}</strong>, model year {{ p.year }}. Similar names, other seasons and bundles are not interchangeable offers. Prices shown here are {{ p.currency }} retailer listings; your selected size may cost more.</p>
-    <p>{% if p.size %}You selected {{ p.size }} cm. Only shops explicitly reporting that size appear; missing sizes are not inferred.{% else %}Choose a reported size to narrow the shops, then confirm its price and availability at the retailer.{% endif %}</p>
-    <p><a href="/guides/listed-price-and-your-size">Check size and price together</a> · <a href="/guides/new-past-season-demo-gear">Compare condition and package contents</a></p>
-  </section>
+
   <section id="offers" class="comparison-section" aria-labelledby="offers-heading">
-    <h2 id="offers-heading">Retailer offers</h2>
+    <h2 id="offers-heading">Shop prices</h2>
     <form method="get" action="/products/{{ p.slug }}#offers" class="comparison-filters">
       <label>Currency<select name="currency">{% for code in ['USD','CAD'] %}<option value="{{ code }}" {% if p.currency == code %}selected{% endif %}>{{ code }}</option>{% endfor %}</select></label>
-      <label>Reported size<select name="size"><option value="">All sizes</option>{% for n in p.sizes %}<option value="{{ n }}" {% if p.size == n %}selected{% endif %}>{{ n }} cm{% if n.endswith("W") %} · wide{% endif %}</option>{% endfor %}{% if p.size and p.size not in p.sizes %}<option selected value="{{ p.size }}">{{ p.size }} cm</option>{% endif %}</select></label>
-      <button type="submit" class="button secondary">Apply</button><a href="/products/{{ p.slug }}">Reset</a>
+      <label>Size<select name="size"><option value="">All sizes</option>{% for n in p.sizes %}<option value="{{ n }}" {% if p.size == n %}selected{% endif %}>{{ n }} cm{% if n.endswith("W") %} · wide{% endif %}</option>{% endfor %}{% if p.size and p.size not in p.sizes %}<option selected value="{{ p.size }}">{{ p.size }} cm</option>{% endif %}</select></label>
+      <button type="submit" class="button secondary">Filter</button><a href="/products/{{ p.slug }}">Reset</a>
     </form>
-    <p class="filter-note">Size filters include only explicitly reported sizes. {{ p.unknown_size_count }} {{ p.currency }} listing{{ '' if p.unknown_size_count == 1 else 's' }} have no reported size. Prices are not converted between currencies.</p>
     {% if p.offers %}<div class="offer-list">{% for o in p.offers %}
       <article class="offer-row retailer-offer" data-href="{{ o.url }}" data-name="{{ o.name }}" data-store="{{ o.store }}" data-category="{{ p.category }}">
-        <div><h3>{{ o.store }}</h3><p>{{ o.name }}</p><p class="offer-checked">Checked {{ o.scraped_at[:16]|replace('T',' ') }} UTC</p></div>
-        <div><span class="offer-label">Reported sizes</span><p>{{ o.sizes or 'Not supplied — check the retailer' }}</p></div>
-        <div><strong class="offer-price">{{ symbol }}{{ '{:,.2f}'.format(o.current_price) }} <small>{{ p.currency }}</small></strong>{% if o.original_price and o.original_price > o.current_price %}<p>Retailer list: {{ symbol }}{{ '{:,.2f}'.format(o.original_price) }}</p>{% endif %}<a class="button secondary product-link" href="{{ o.url }}" target="_blank" rel="noopener noreferrer" aria-label="View {{ p.name }} at {{ o.store }} (opens in a new tab)">Visit shop<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4.5 11.5 11.5 4.5M6 4.5h5.5V10"/></svg></a></div>
+        <div><h3>{{ o.store }}</h3><p>{{ o.name }}</p><p class="offer-checked">Updated {{ o.scraped_at[:10] }}</p></div>
+        <div><span class="offer-label">Sizes</span><p>{{ o.sizes or 'See store' }}</p></div>
+        <div><strong class="offer-price">{{ symbol }}{{ '{:,.2f}'.format(o.current_price) }} <small>{{ p.currency }}</small></strong>{% if o.original_price and o.original_price > o.current_price %}<p><s>{{ symbol }}{{ '{:,.2f}'.format(o.original_price) }}</s></p>{% endif %}<a class="button secondary product-link" href="{{ o.url }}" target="_blank" rel="noopener noreferrer" aria-label="View {{ p.name }} at {{ o.store }} (opens in a new tab)">Go to {{ o.store }}<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4.5 11.5 11.5 4.5M6 4.5h5.5V10"/></svg></a></div>
       </article>
-    {% endfor %}</div>{% else %}<p>No matching offers are currently recent enough to show. <a href="/products/{{ p.slug }}">Clear filters</a> or <a href="/products">compare other models</a>.</p>{% endif %}
+    {% endfor %}</div>{% else %}<p>No matching offers right now. <a href="/products/{{ p.slug }}">Clear filters</a> or <a href="/products">browse other models</a>.</p>{% endif %}
   </section>
+
+  {% if p.history %}
   <section class="comparison-section price-history" aria-labelledby="history-heading">
-    <h2 id="history-heading">Observed price history <span class="currency-tag">{{ p.currency }}</span></h2>
-    <p>The lowest listing price recorded on each observed day, across the matched offers in this view. Available sizes can change; this is not a history of one guaranteed size or a delivered total.</p>
-    {% if p.history %}
-      <p>Lowest observed: <strong>{{ symbol }}{{ '{:,.2f}'.format(p.observed_low) }}</strong> · {{ p.history|length }} observed day{{ '' if p.history|length == 1 else 's' }} since {{ p.history[0].date }}.</p>
-      {% if p.history|length > 1 %}
-      <svg class="history-chart" viewBox="0 0 600 190" role="img" aria-labelledby="chart-title chart-desc"><title id="chart-title">{{ p.name }} observed listing prices in {{ p.currency }}</title><desc id="chart-desc">{{ p.history|length }} observations from {{ p.history[0].date }} to {{ p.history[-1].date }}. Exact values are in the table below. Lines connect observations and do not imply continuous checks.</desc><path d="M30 20V170H575" fill="none" stroke="currentColor" opacity=".25"/><polyline points="{{ p.chart_line }}" fill="none" stroke="currentColor" stroke-width="3"/>{% for point in p.chart %}<circle cx="{{ point.x }}" cy="{{ point.y }}" r="4" fill="currentColor"><title>{{ point.date }}: {{ symbol }}{{ '%.2f'|format(point.price) }}</title></circle>{% endfor %}</svg>
-      {% else %}<p class="history-note">We’re building this model’s history. One observed day is not enough to call this a rare deal or a 30-day low.</p>{% endif %}
-      <details><summary>View recorded prices</summary><table class="history-table"><caption>Observed daily lows for matched {{ p.currency }} listings</caption><thead><tr><th scope="col">Date (UTC)</th><th scope="col">Listing price</th></tr></thead><tbody>{% for point in p.history %}<tr><td>{{ point.date }}</td><td>{{ symbol }}{{ '{:,.2f}'.format(point.price) }} {{ p.currency }}</td></tr>{% endfor %}</tbody></table></details>
-    {% else %}<p>History will appear as we collect verified observations for these offers.</p>{% endif %}
-    <p><a href="/how-it-works">What these prices do and don’t tell you</a></p>
+    <h2 id="history-heading">Price trend <span class="currency-tag">{{ p.currency }}</span></h2>
+    <p>Best tracked price: <strong>{{ symbol }}{{ '{:,.2f}'.format(p.observed_low) }}</strong> across {{ p.history|length }} tracked day{{ '' if p.history|length == 1 else 's' }}.</p>
+    {% if p.history|length > 1 %}
+    <svg class="history-chart" viewBox="0 0 600 190" role="img" aria-labelledby="chart-title"><title id="chart-title">{{ p.name }} lowest daily price in {{ p.currency }}</title><path d="M30 20V170H575" fill="none" stroke="currentColor" opacity=".25"/><polyline points="{{ p.chart_line }}" fill="none" stroke="currentColor" stroke-width="3"/>{% for point in p.chart %}<circle cx="{{ point.x }}" cy="{{ point.y }}" r="4" fill="currentColor"><title>{{ point.date }}: {{ symbol }}{{ '%.2f'|format(point.price) }}</title></circle>{% endfor %}</svg>
+    {% endif %}
+    <details><summary>Daily price log</summary><table class="history-table"><caption>Lowest daily price ({{ p.currency }})</caption><thead><tr><th scope="col">Date</th><th scope="col">Best price</th></tr></thead><tbody>{% for point in p.history %}<tr><td>{{ point.date }}</td><td>{{ symbol }}{{ '{:,.2f}'.format(point.price) }} {{ p.currency }}</td></tr>{% endfor %}</tbody></table></details>
   </section>
-  {% if related %}<section class="comparison-section"><h2>More from {{ p.brand }}</h2><div class="category-links">{% for other in related %}<a href="/products/{{ other.slug }}">{{ other.name }}</a>{% endfor %}</div><p>Different models are shown separately; they are not equivalent offers for this product.</p></section>{% endif %}
+  {% endif %}
+
+  {% if related %}<section class="comparison-section"><h2>More from {{ p.brand }}</h2><div class="category-links">{% for other in related %}<a href="/products/{{ other.slug }}">{{ other.name }}</a>{% endfor %}</div></section>{% endif %}
   {% include 'partials/signup.html' %}
 </main>
 {% endblock %}

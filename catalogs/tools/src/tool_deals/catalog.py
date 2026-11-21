@@ -293,9 +293,5 @@ CATALOG = Catalog(
         ("shaper", "Shaper"), ("shaper tools", "Shaper"),
         ("wen", "WEN"), ("wen products", "WEN"),
     ),
-    buying_note=(
-        "A bare tool does not include a battery or charger. A kit label does not guarantee particular contents. "
-        "Confirm the package, battery compatibility, shipping, and return policy on the retailer page. "
-        "Check required voltage and phase for workshop machines. Clearance may be final sale."
-    ),
+    buying_note="Cordless power tools, combo kits, welders, and stationary workshop equipment ($200+ floor), ranked by biggest percentage off.",
 )

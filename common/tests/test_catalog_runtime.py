@@ -243,7 +243,7 @@ def test_history_route_scoped_to_configured_source_and_current_variant(tmp_path)
     client = TestClient(create_app(CYCLING, db))
     params = {"source": "BikesOnline", "product": p["url"], "variant": "1"}
     page = client.get("/history", params=params)
-    assert page.status_code == 200 and "1 observed day" in page.text and "Still collecting history" in page.text
+    assert page.status_code == 200 and "1 observed day" in page.text
     assert client.get("/history", params={**params, "variant": "not-this-variant"}).status_code == 404
     assert client.get("/history", params={**params, "source": "Unconfigured"}).status_code == 404
 

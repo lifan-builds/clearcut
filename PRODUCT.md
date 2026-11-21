@@ -27,7 +27,6 @@ Shoppers move from the Clearcut front door (`clearcut.clifan.com` / `clifan.com/
 - Read-only FastAPI + Jinja2/HTMX web serving backed by validated SQLite snapshots (`deals.db.gz` and standalone `package_catalog.py` bundles); zero runtime scraping or database mutation.
 - Data refreshes are strictly manual (`workflow_dispatch` only; never add automatic cron schedules), with a 24-hour freshness ceiling after which stale sources leave browsing.
 - Strict CSP (`default-src 'self'; img-src 'self' https:; style-src 'self'; script-src 'self'`) on shared portal and catalog runtimes—all fonts, stylesheets, scripts, and bespoke visual plates must be self-hosted.
-- Retailer `compare_at` / MSRP values must be disclosed honestly as retailer references rather than verified historical street prices.
 
 ## Brand Commitments
 

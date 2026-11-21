@@ -1,4 +1,5 @@
 """Crawlable model/brand destinations and a plain-language methodology page."""
+import re
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -22,24 +23,32 @@ ReportedSize = Annotated[str | None, Query(pattern=r"^(?:1\d{2}|2[01]\d|220)W?$"
 
 @comparison_router.get('/products', response_class=HTMLResponse)
 async def products(request: Request):
+    items = await catalog_summary()
+    all_brands = dict(BRANDS)
+    for item in items:
+        all_brands.setdefault(re.sub(r"[^a-z0-9]+", "-", item["brand"].lower()).strip("-"), item["brand"])
     return templates.TemplateResponse(request=request, name='products.html', context={
-        'products': await catalog_summary(), 'brands': BRANDS,
-        'page_title': 'Compare Ski & Snowboard Prices by Model | FreshPowder',
-        'page_description': 'Compare reviewed ski and snowboard models across retailers, with separate currencies, reported lengths and observed price history.',
+        'products': items, 'brands': dict(sorted(all_brands.items(), key=lambda kv: kv[1])),
+        'page_title': 'Compare Ski & Snowboard Prices Across Shops | FreshPowder',
+        'page_description': 'Compare ski, snowboard, and boot deals side by side across retailers, ranked by deepest discount.',
     })
 
 
 @comparison_router.get('/brands/{slug}', response_class=HTMLResponse)
 async def brand_page(request: Request, slug: str):
-    brand = BRANDS.get(slug)
+    items = await catalog_summary()
+    all_brands = dict(BRANDS)
+    for item in items:
+        all_brands.setdefault(re.sub(r"[^a-z0-9]+", "-", item["brand"].lower()).strip("-"), item["brand"])
+    brand = all_brands.get(slug)
     if not brand:
         raise HTTPException(404)
     return templates.TemplateResponse(request=request, name='products.html', context={
-        'products': [p for p in await catalog_summary() if p['brand'] == brand],
-        'brand': brand, 'brands': BRANDS,
+        'products': [p for p in items if p['brand'] == brand],
+        'brand': brand, 'brands': dict(sorted(all_brands.items(), key=lambda kv: kv[1])),
         'noindex': slug not in INDEXABLE_BRANDS or bool(request.url.query),
-        'page_title': f'{brand} Ski & Snowboard Price Comparisons | FreshPowder',
-        'page_description': f'Compare selected {brand} models across shops. Check season, reported lengths, currency and price observations before buying.',
+        'page_title': f'{brand} Ski & Snowboard Deals Across Shops | FreshPowder',
+        'page_description': f'Compare {brand} ski and snowboard deals across specialist retailers.',
     })
 
 
@@ -61,16 +70,19 @@ async def product_page(request: Request, slug: str,
         schema['offers'] = {'@type': 'AggregateOffer', 'priceCurrency': currency,
                             'lowPrice': min(prices), 'highPrice': max(prices),
                             'offerCount': len(prices), 'url': canonical}
+    brand_slug = next((s for s, b in BRANDS.items() if b == product['brand']),
+                      re.sub(r"[^a-z0-9]+", "-", product['brand'].lower()).strip("-"))
     related = [p for p in PRODUCTS.values() if p['slug'] != slug and p['brand'] == product['brand']][:4]
     return templates.TemplateResponse(request=request, name='product.html', context={
         'product': product, 'related': related,
-        'brand_slug': next(s for s, b in BRANDS.items() if b == product['brand']),
-        'page_title': f"{product['name']} — Prices & History | FreshPowder",
-        'page_description': schema['description'], 'canonical_url': canonical,
+        'brand_slug': brand_slug,
+        'page_title': f"{product['name']} — Shop Price Comparison | FreshPowder",
+        'page_description': f"Compare {product['name']} prices and available sizes across shops.",
+        'canonical_url': canonical,
         'structured_data': schema,
         'breadcrumb_data': {'@context': 'https://schema.org', '@type': 'BreadcrumbList', 'itemListElement': [
             {'@type': 'ListItem', 'position': 1, 'name': 'Compare models', 'item': site_url()+'/products'},
-            {'@type': 'ListItem', 'position': 2, 'name': product['brand'], 'item': site_url()+'/brands/'+next(s for s,b in BRANDS.items() if b == product['brand'])},
+            {'@type': 'ListItem', 'position': 2, 'name': product['brand'], 'item': site_url()+'/brands/'+brand_slug},
             {'@type': 'ListItem', 'position': 3, 'name': product['name'], 'item': canonical},
         ]},
     })
@@ -79,6 +91,6 @@ async def product_page(request: Request, slug: str,
 @comparison_router.get('/how-it-works', response_class=HTMLResponse)
 async def methodology(request: Request):
     return templates.TemplateResponse(request=request, name='methodology.html', context={
-        'page_title': 'How FreshPowder Checks and Compares Deals',
-        'page_description': 'Our price sources, product matching rules, freshness limits and the difference between a list-price discount and an observed price drop.',
+        'page_title': 'How It Works | FreshPowder',
+        'page_description': 'How FreshPowder scans 28+ snow shops daily, matches exact sizes, filters out spare-part clutter, and ranks the biggest markdowns first.',
     })

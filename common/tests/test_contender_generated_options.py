@@ -153,7 +153,7 @@ def test_price_note_renders_escaped_in_cards_and_history(tmp_path):
         page = client.get("/", params={"size": "XL"})
         soup = BeautifulSoup(page.text, "html.parser")
         notes = soup.select("article .price-note")
-        assert len(notes) == 2 and {p.get_text() for p in notes} == {selected["price_note"]}
+        assert len(notes) == 1 and {p.get_text() for p in notes} == {selected["price_note"]}
         assert selected["price_note"] not in page.text
         history_page = client.get(soup.select_one("a.history-link")["href"])
         assert selected["price_note"] not in history_page.text

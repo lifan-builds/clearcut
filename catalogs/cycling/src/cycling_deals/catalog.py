@@ -251,11 +251,5 @@ CATALOG = Catalog(
     assets=Path(__file__).parent / "static",
     art_label="01 / THE NEXT RIDE",
     theme_color="#163d32",
-    buying_note=(
-        "Framesets are listed separately from complete bikes. Confirm geometry, components, assembly, "
-        "shipping, and return terms with the retailer. Sizes are retailer labels, not a fit recommendation. "
-        "Mike's Bikes advertises a $79 assembly charge added at checkout; its closeout sales are final. "
-        "Incycle lists $75 bike and $30 frameset shipping within the contiguous US, with product-specific "
-        "exceptions. Check manufacturer shipping restrictions before buying."
-    ),
+    buying_note="Complete road, gravel, mountain, and electric bikes plus framesets ($1,000+ floor), ranked by biggest percentage off.",
 )

@@ -1,8 +1,4 @@
-"""Conservative, reviewed product comparisons over the read-only deal snapshot.
-
-An offer must retain both its reviewed URL and title. No fuzzy product joins or
-inferred model years; catalog additions are an explicit editorial operation.
-"""
+"""Cross-shop model price comparisons over the read-only deal snapshot."""
 from __future__ import annotations
 
 import json
@@ -16,12 +12,59 @@ from pathlib import Path
 import aiosqlite
 
 from aggregator import db
+from aggregator.models import model_year
 
 CATALOG = json.loads(Path(__file__).with_name("comparison_catalog.json").read_text())
 PRODUCTS = {p["slug"]: p for p in CATALOG}
 REFERENCES = {r["url"]: (p, r) for p in CATALOG for r in p["offers"]}
 BRANDS = {re.sub(r"[^a-z0-9]+", "-", p["brand"].lower()): p["brand"] for p in CATALOG}
 INDEXABLE_BRANDS = {s: b for s, b in BRANDS.items() if sum(p['brand'] == b for p in CATALOG) >= 2}
+
+_STRIP_NOISE_RE = re.compile(
+    r"\b(?:mens|men's|men|unisex|adult|skis|snowboard|snowboards|ski boots|snowboard boots|"
+    r"alpine|freeride|all[- ]mountain|powder|carving|pair|flat)\b",
+    re.IGNORECASE,
+)
+
+
+def _slugify(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
+def _auto_model_identity(row: dict) -> tuple[str, str, str, int | str] | None:
+    brand = (row.get("brand") or "").strip()
+    category = (row.get("category") or "").strip()
+    name = (row.get("name") or "").strip()
+    if not brand or category not in {"skis", "snowboards", "ski boots", "snowboard boots", "bindings", "goggles", "helmets"}:
+        return None
+    year = model_year(name) or "current"
+    lowered = unicodedata.normalize("NFKC", name).casefold()
+    gender = "womens" if re.search(r"\b(?:women'?s?|womens|wmns|ladies)\b", lowered) else ""
+    wide = "wide" if re.search(r"\bwide\b|\b1\d{2}w\b", lowered) else ""
+    with_bindings = "system" if re.search(r"\b(?:with|w/)\s+[a-z0-9 ]*bindings?\b|\bsystem skis?\b", lowered) else ""
+    cleaned = re.sub(r"\b20\d{2}(?:[-/]\d{2,4})?\b|\b\d{2}[-/]\d{2}\b", " ", lowered)
+    cleaned = re.sub(r"\b(?:women'?s?|womens|wmns|ladies)\b", " ", cleaned)
+    cleaned = _STRIP_NOISE_RE.sub(" ", cleaned)
+    if cleaned.startswith(brand.casefold() + " "):
+        cleaned = cleaned[len(brand) + 1:]
+    tokens = [t for t in re.findall(r"[a-z0-9.]+", cleaned) if not re.fullmatch(r"1\d{2}cm", t)]
+    if len(tokens) < 1 or len(tokens) > 6:
+        return None
+    core = "-".join(tokens[:4])
+    parts = [ _slugify(brand), core ]
+    if gender:
+        parts.append(gender)
+    if wide:
+        parts.append(wide)
+    if with_bindings:
+        parts.append(with_bindings)
+    if year != "current":
+        parts.append(str(year))
+    slug = "auto-" + "-".join(p for p in parts if p)
+    display_tokens = " ".join(w.upper() if len(w) <= 3 and any(c.isdigit() for c in w) else w.title() for w in tokens[:4])
+    suffix = " ".join(x for x in [("Women's" if gender else ""), ("Wide" if wide else ""), (str(year) if year != "current" else "")] if x)
+    display_name = f"{brand.title()} {display_tokens}" + (f" ({suffix})" if suffix else "")
+    return slug, display_name, brand.title(), year
 
 
 def normalized_title(value: str) -> str:
@@ -81,6 +124,48 @@ async def catalog_rows(db_path: Path | None = None) -> list[dict]:
     return result
 
 
+async def _auto_grouped_models(db_path: Path | None = None) -> dict[str, dict]:
+    target = db_path or db.DB_PATH
+    if not Path(target).exists():
+        return {}
+    cutoff = (datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=36)).isoformat()
+    async with db._connect(target, read_only=True) as conn:
+        conn.row_factory = aiosqlite.Row
+        rows = await (await conn.execute("""
+            SELECT d.*
+            FROM deals d
+            JOIN (SELECT store, MAX(scraped_at) ts FROM deals GROUP BY store) latest
+              ON latest.store = d.store AND d.scraped_at = latest.ts
+            WHERE d.exclusion_reason IS NULL
+              AND d.scraped_at >= ?
+              AND d.current_price >= 1
+        """, (cutoff,))).fetchall()
+    buckets: dict[str, dict] = {}
+    for raw in rows:
+        row = dict(raw)
+        if row["url"] in REFERENCES or row.get("currency") not in {"USD", "CAD"}:
+            continue
+        ident = _auto_model_identity(row)
+        if not ident:
+            continue
+        slug, display_name, brand_title, year = ident
+        if slug in PRODUCTS:
+            continue
+        entry = buckets.setdefault(slug, {
+            "slug": slug,
+            "name": display_name,
+            "brand": brand_title,
+            "category": row["category"],
+            "year": year,
+            "rows": [],
+        })
+        row["slug"] = slug
+        row["size_keys"] = reported_sizes(row.get("sizes"))
+        row["current"] = True
+        entry["rows"].append(row)
+    return {slug: data for slug, data in buckets.items() if len({r["store"] for r in data["rows"]}) >= 2}
+
+
 async def catalog_summary(db_path: Path | None = None) -> list[dict]:
     grouped = defaultdict(list)
     for row in await catalog_rows(db_path):
@@ -91,17 +176,43 @@ async def catalog_summary(db_path: Path | None = None) -> list[dict]:
         offers = grouped[product["slug"]]
         prices = {currency: min(o["current_price"] for o in offers if o["currency"] == currency)
                   for currency in ("USD", "CAD") if any(o["currency"] == currency for o in offers)}
+        max_disc = max((o.get("discount_pct") or 0 for o in offers), default=0)
         result.append({**product, "prices": prices, "store_count": len({o["store"] for o in offers}),
+                       "max_discount": max_disc,
                        "image": next((o["image_url"] for o in offers if o["image_url"]), None)})
+    auto_models = await _auto_grouped_models(db_path)
+    for slug, item in auto_models.items():
+        offers = item["rows"]
+        prices = {currency: min(o["current_price"] for o in offers if o["currency"] == currency)
+                  for currency in ("USD", "CAD") if any(o["currency"] == currency for o in offers)}
+        max_disc = max((o.get("discount_pct") or 0 for o in offers), default=0)
+        result.append({
+            "slug": slug,
+            "name": item["name"],
+            "brand": item["brand"],
+            "category": item["category"],
+            "year": item["year"],
+            "prices": prices,
+            "store_count": len({o["store"] for o in offers}),
+            "max_discount": max_disc,
+            "image": next((o["image_url"] for o in offers if o.get("image_url")), None),
+        })
+    result.sort(key=lambda m: (m["store_count"] == 0, -m["max_discount"], -m["store_count"], m["name"]))
     return result
 
 
 async def product_detail(slug: str, currency: str = "USD", size: str | None = None,
                          db_path: Path | None = None) -> dict | None:
     product = PRODUCTS.get(slug)
+    auto_entry = None
     if not product:
-        return None
-    rows = [r for r in await catalog_rows(db_path) if r["slug"] == slug]
+        auto_entry = (await _auto_grouped_models(db_path)).get(slug)
+        if not auto_entry:
+            return None
+        product = {k: auto_entry[k] for k in ("slug", "name", "brand", "category", "year")}
+        rows = auto_entry["rows"]
+    else:
+        rows = [r for r in await catalog_rows(db_path) if r["slug"] == slug]
     current = [r for r in rows if r["current"]]
     offers = sorted((r for r in current if r["currency"] == currency and
                      (size is None or size in r["size_keys"])), key=lambda r: (r["current_price"], r["store"]))
@@ -117,7 +228,8 @@ async def product_detail(slug: str, currency: str = "USD", size: str | None = No
                 urls)).fetchall()
     daily = {}
     for url, observed, price in history:
-        if observed < REFERENCES[url][1]["history_since"] or not math.isfinite(price) or price < 1:
+        min_date = REFERENCES[url][1]["history_since"] if url in REFERENCES else ""
+        if (min_date and observed < min_date) or not math.isfinite(price) or price < 1:
             continue
         day = observed[:10]
         daily[day] = min(daily.get(day, price), price)

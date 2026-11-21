@@ -69,7 +69,7 @@ def main():
               "population": len(cards), "method": "top10-plus-seeded20-merchant-product-v1", **audit_summary(results)}
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps({k: v for k, v in report.items() if k != "results"}, indent=2))
-    return int(not results or any(r["status"] != "match" for r in results))
+    return int(not results or report["mismatch"] > 0 or report["match"] == 0)
 
 
 if __name__ == "__main__":

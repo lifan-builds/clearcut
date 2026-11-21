@@ -1806,6 +1806,82 @@ th small {
   margin: 24px 0;
 }
 
+/* ---- How It Works Page ---- */
+.how-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+  margin-bottom: 28px;
+}
+.how-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px 30px;
+  box-shadow: var(--shadow-card);
+}
+.how-step {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 4px 11px;
+  border-radius: 999px;
+  margin-bottom: 12px;
+}
+.how-card h2 {
+  font-size: 23px;
+  margin-bottom: 10px;
+}
+.how-card p {
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  max-width: 54ch;
+}
+.how-card code {
+  font-size: 13.5px;
+  background: var(--well);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.how-cta-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 24px 36px;
+  background: var(--surface-tinted);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 34px 36px;
+}
+.how-cta-bar h2 {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-weight: 400;
+  font-size: clamp(32px, 3.4vw, 44px);
+  margin-bottom: 8px;
+}
+.how-cta-bar p {
+  font-size: 15px;
+  color: var(--text-secondary);
+  max-width: 56ch;
+}
+.how-cta-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+@media (max-width: 820px) {
+  .how-grid {
+    grid-template-columns: 1fr;
+  }
+  .how-cta-bar {
+    padding: 24px;
+  }
+}
+
 /* ---- Footer ---- */
 .site-footer {
   border-top: 1px solid var(--border);

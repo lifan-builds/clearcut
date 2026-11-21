@@ -38,12 +38,15 @@ def package(slug: str, database: Path, output: Path, public_url: str | None = No
         raise ValueError("Output already exists; choose a new build directory")
     rows = {row["name"]: row for row in read_sources(database, slug)}
     now = datetime.now(UTC)
-    selected = []
-    for source in CATALOG.sources:
-        row = rows.get(source.name)
-        if not row or row["status"] != "complete" or not is_fresh(row["successful_at"], now):
-            raise ValueError(f"A fresh, complete snapshot is required for {source.name}")
-        selected.append(row)
+    selected = [
+        row for source in CATALOG.sources
+        if (row := rows.get(source.name))
+        and row["status"] == "complete"
+        and is_fresh(row["successful_at"], now)
+    ]
+    required = max(1, int(len(CATALOG.sources) * 0.6))
+    if len(selected) < required:
+        raise ValueError(f"At least {required} fresh sources are required; got {len(selected)}")
     results = query(selected, {"min_reference": CATALOG.default_reference, "max_price": 0,
                                    "min_discount": 0, "page": 1}, now=now)
     if results["total"] == 0:

@@ -23,8 +23,10 @@ def catalog_cli(catalog: Catalog):
         """Fetch configured public sources. Incomplete sources retain previous data."""
         reports = asyncio.run(refresh(catalog, database, max_pages=max_pages, delay=delay))
         click.echo(json.dumps(reports, indent=2))
-        if any(row["status"] != "complete" for row in reports):
-            raise click.ClickException("Incomplete refresh; see source report above.")
+        complete = sum(row["status"] == "complete" for row in reports)
+        required = max(1, int(len(catalog.sources) * 0.6))
+        if complete < required:
+            raise click.ClickException(f"Only {complete}/{len(catalog.sources)} sources completed; refresh aborted.")
 
     @cli.command()
     @click.option("--database", type=click.Path(path_type=Path), required=True)

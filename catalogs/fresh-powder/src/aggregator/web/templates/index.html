@@ -8,7 +8,7 @@
       <h1>More gear. Less markup.</h1>
       <p>Ski &amp; snowboard equipment across 28 North American specialist shops in USD and CAD—ranked strictly by deepest percentage discount&nbsp;first.</p>
       <div class="hero-pill-row">
-        <span class="hero-status-pill"><span class="pulse-dot" aria-hidden="true"></span><span>{{ "{:,}".format(deal_count) }} matching listings · <a href="/how-it-works">How we verify</a></span></span>
+        <span class="hero-status-pill"><span class="pulse-dot" aria-hidden="true"></span><span>{{ "{:,}".format(deal_count) }} live deals · <a href="/how-it-works">How it works</a></span></span>
       </div>
     </div>
   </section>
@@ -61,7 +61,7 @@
           <label class="checkbox-label"><input name="reviewed" type="checkbox" value="1" {% if current_reviewed == '1' %}checked{% endif %}> Expert review available</label>
           <div class="drawer-actions"><a href="/" class="text-link reset-button" data-reset-filters>Clear filters</a><button type="submit" class="button secondary">Apply filters</button></div>
         </div>
-        <p class="filter-note">No invite or account needed. Prices stay in the retailer’s currency. Price filters and sorting use USD unless you select CAD. Length ranges match listed lengths, not assumed sizes between them. Original-price filters use retailer references, not verified former selling&nbsp;prices.</p>
+        <p class="filter-note">No invite or account needed. Prices appear in each shop’s currency (USD or CAD).</p>
         <div id="saved-searches" class="saved-searches" hidden><p>Saved on this browser. No email alerts.</p><ul></ul></div>
       </details>
     </div>
