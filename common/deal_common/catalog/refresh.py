@@ -118,7 +118,7 @@ async def refresh(catalog: Catalog, path: Path, *, max_pages: int = 30,
                             max_pages=max_pages, outcome=outcome,
                             include_product=lambda product: catalog.classify(product) is not None,
                         ),
-                        timeout=600.0,
+                        timeout=1800.0,
                     )
                 except TimeoutError:
                     products = []
