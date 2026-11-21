@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -157,17 +158,22 @@ def read_shared_catalog_snapshot(
 
 def default_portal_catalogs(
     *,
-    snow_url: str = "https://freshpowder.clifan.com",
-    cycling_url: str = "https://bigring.clifan.com",
-    tools_url: str = "https://benchdrop.clifan.com",
-    camp_url: str = "https://highline.clifan.com",
-    watersports_url: str = "https://tideline.clifan.com",
+    snow_url: str | None = None,
+    cycling_url: str | None = None,
+    tools_url: str | None = None,
+    camp_url: str | None = None,
+    watersports_url: str | None = None,
     snow_db: Path | None = None,
     cycling_db: Path | None = None,
     tools_db: Path | None = None,
     camp_db: Path | None = None,
     watersports_db: Path | None = None,
 ) -> tuple[PortalCatalog, ...]:
+    snow_url = snow_url or os.environ.get("SNOW_SITE_URL", "https://freshpowder.clifan.com")
+    cycling_url = cycling_url or os.environ.get("CYCLING_SITE_URL", "https://bigring.clifan.com")
+    tools_url = tools_url or os.environ.get("TOOLS_SITE_URL", "https://benchdrop.clifan.com")
+    camp_url = camp_url or os.environ.get("CAMP_SITE_URL", "https://highline-weld.vercel.app")
+    watersports_url = watersports_url or os.environ.get("WATER_SITE_URL", "https://tideline-one-blue.vercel.app")
     return (
         PortalCatalog(
             slug="snow",

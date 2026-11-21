@@ -86,6 +86,7 @@ def package(slug: str, database: Path, output: Path, public_url: str | None = No
     (output / "requirements.txt").write_text("\n".join(dependencies) + "\n")
     (output / "vercel.json").write_text(json.dumps({
         "version": 2,
+        "framework": None,
         "buildCommand": "",
         "functions": {"api/index.py": {"includeFiles": "{src/**,data/catalog.db}"}},
         "rewrites": [{"source": "/(.*)", "destination": "/api/index.py"}],
