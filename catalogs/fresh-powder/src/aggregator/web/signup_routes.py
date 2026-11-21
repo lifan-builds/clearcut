@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hmac
+import os
 import re
 import secrets
 import sqlite3
@@ -122,6 +124,33 @@ async def remove_signup(request: Request, token: str = Form("")):
         request=request,
         name="signup_result.html",
         context={"result_title": "Your signup is removed", "message": "Your signup has been removed.", "noindex": True},
+    )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
+
+
+def unsubscribe_signature(email: str, secret: str) -> str:
+    return hmac.new(secret.encode("utf-8"), f"unsubscribe:{email.lower()}".encode(), sha256).hexdigest()
+
+
+@signup_router.get("/alerts/unsubscribe", response_class=HTMLResponse)
+async def one_click_unsubscribe(request: Request, email: str = "", sig: str = ""):
+    secret = os.environ.get("SECRET_KEY", "")
+    clean_email = email.strip().lower()
+    if not secret or not clean_email or not sig or not hmac.compare_digest(unsubscribe_signature(clean_email, secret), sig):
+        return signup_error(request, "Invalid or expired unsubscribe link.", 422, removal=True)
+    try:
+        conn = signup_db()
+        conn.execute("DELETE FROM deal_alert_signups WHERE email = ?", (clean_email,))
+        conn.commit()
+        _sync()
+    except (sqlite3.Error, OSError, RuntimeError, ValueError):
+        return signup_error(request, "Could not process unsubscribe right now. Please try again.", 503, removal=True)
+    response = templates.TemplateResponse(
+        request=request,
+        name="signup_result.html",
+        context={"result_title": "Unsubscribed", "message": "You will no longer receive deal alerts.", "noindex": True},
     )
     response.headers["Cache-Control"] = "no-store"
     response.headers["Referrer-Policy"] = "no-referrer"

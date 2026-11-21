@@ -34,11 +34,12 @@ def audit(path, catalog, floor, now):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database", type=Path, required=True)
-    parser.add_argument("--catalog", choices=("cycling", "tools"), required=True)
+    parser.add_argument("--catalog", choices=("cycling", "tools", "camp", "watersports"), required=True)
     args = parser.parse_args()
     if not args.database.is_file():
         parser.error("Snapshot does not exist; no database will be created")
-    print(json.dumps(audit(args.database, args.catalog, {"cycling": 1000, "tools": 200}[args.catalog],
+    floors = {"cycling": 1000, "tools": 200, "camp": 120, "watersports": 180}
+    print(json.dumps(audit(args.database, args.catalog, floors[args.catalog],
                            datetime.now(UTC)), indent=2))
 
 

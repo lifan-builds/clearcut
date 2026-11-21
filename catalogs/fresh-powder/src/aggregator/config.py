@@ -381,6 +381,27 @@ STORES: list[StoreConfig] = [
         ],
         currency="CAD", verify_shopify_currency=True,
     ),
+    StoreConfig(
+        "Cripple Creek Backcountry", "cripplecreekbc.com",
+        scrape_urls=[
+            "https://cripplecreekbc.com/collections/sale",
+            "https://cripplecreekbc.com/collections/alpine-touring-skis",
+            "https://cripplecreekbc.com/collections/ski-boots",
+        ],
+        parser_type="shopify",
+        tax_free=True, verify_shopify_currency=True,
+    ),
+    StoreConfig(
+        "Next Adventure", "nextadventure.net",
+        scrape_urls=[
+            "https://nextadventure.net/collections/skis",
+            "https://nextadventure.net/collections/snowboards",
+            "https://nextadventure.net/collections/ski-boots",
+            "https://nextadventure.net/collections/snowboard-boots",
+        ],
+        parser_type="shopify",
+        tax_free=True, verify_shopify_currency=True,
+    ),
 ]
 
 

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "clearcut"
 version = "0.1.0"
-description = "Multi-catalog specialist deal engine powering FreshPowder, Big Ring, and Bench Drop"
+description = "Multi-catalog specialist deal engine powering FreshPowder, Big Ring, Bench Drop, Highline, and Tideline"
 requires-python = ">=3.11"
 dependencies = [
     "aiosqlite>=0.20,<0.23",
@@ -36,10 +36,12 @@ clearcut-hub = "deal_common.portal.cli:cli"
 snow-deals-agg = "aggregator.cli:cli"
 cycling-deals = "cycling_deals.cli:cli"
 tool-deals = "tool_deals.cli:cli"
+camp-deals = "camp_deals.cli:cli"
+water-deals = "water_deals.cli:cli"
 
 [tool.setuptools.packages.find]
-where = ["common", "catalogs/fresh-powder/src", "catalogs/cycling/src", "catalogs/tools/src"]
-include = ["deal_common*", "aggregator*", "cycling_deals*", "tool_deals*"]
+where = ["common", "catalogs/fresh-powder/src", "catalogs/cycling/src", "catalogs/tools/src", "catalogs/camp/src", "catalogs/watersports/src"]
+include = ["deal_common*", "aggregator*", "cycling_deals*", "tool_deals*", "camp_deals*", "water_deals*"]
 
 [tool.setuptools.package-data]
 "aggregator" = ["comparison_catalog.json"]
@@ -48,7 +50,9 @@ include = ["deal_common*", "aggregator*", "cycling_deals*", "tool_deals*"]
 "deal_common.portal" = ["templates/*.html", "static/*.css", "static/*.js", "static/img/*"]
 "cycling_deals" = ["static/*.css", "static/*.svg", "static/img/*"]
 "tool_deals" = ["static/*.css", "static/*.svg", "static/img/*"]
+"camp_deals" = ["static/*.css", "static/*.svg", "static/img/*"]
+"water_deals" = ["static/*.css", "static/*.svg", "static/img/*"]
 
 [tool.pytest.ini_options]
-testpaths = ["common/tests", "catalogs/fresh-powder/tests", "catalogs/cycling/tests", "catalogs/tools/tests"]
-pythonpath = ["common", "catalogs/fresh-powder/src", "catalogs/cycling/src", "catalogs/tools/src"]
+testpaths = ["common/tests", "catalogs/fresh-powder/tests", "catalogs/cycling/tests", "catalogs/tools/tests", "catalogs/camp/tests", "catalogs/watersports/tests"]
+pythonpath = ["common", "catalogs/fresh-powder/src", "catalogs/cycling/src", "catalogs/tools/src", "catalogs/camp/src", "catalogs/watersports/src"]

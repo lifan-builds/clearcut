@@ -15,7 +15,8 @@ def main() -> int:
         env.update(
             HOME=tmp,
             PYTHONPATH=os.pathsep.join(str(ROOT / path) for path in (
-                "common", "catalogs/fresh-powder/src", "catalogs/cycling/src", "catalogs/tools/src")),
+                "common", "catalogs/fresh-powder/src", "catalogs/cycling/src",
+                "catalogs/tools/src", "catalogs/camp/src", "catalogs/watersports/src")),
             PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
             DATABASE_PATH=str(Path(tmp) / "deals.db"),
             AUTH_DB_PATH=str(Path(tmp) / "auth.db"),

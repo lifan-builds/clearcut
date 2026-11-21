@@ -206,8 +206,7 @@ def test_normalization_and_query_preserve_exact_offers():
     ("Fox Rear Shock Mount Hardware Kit", "Mountain Bikes"),
     ("Fox 38 Factory Grip2 Suspension Fork", "Mountain Bikes"),
     ("RockShox Super Deluxe Ultimate Rear Shock", "Mountain Bikes"),
-    ("Zipp 303 Firecrest Carbon Road Wheelset", "Road Bikes"),
-    ("Shimano Ultegra Di2 12-Speed Groupset", "Road Bikes"),
+    ("Padded Double Wheelset Travel Bag", "Road Bikes"),
     ("SRAM Force AXS Crankset", "Road Bikes"),
     ("SRAM XG-1295 Eagle 12-Speed Cassette", "Mountain Bikes"),
     ("Fox Transfer Factory Dropper Post", "Mountain Bikes"),
@@ -243,6 +242,8 @@ def test_non_bike_junk_frame_protection_parts_kids_and_ebike_kits_excluded(name,
     ("2025 Scott Genius Frame & Fork", "Mountain Frame", "Framesets"),
     ("Mountain Bike with Frame Protection", "Mountain Bikes", "Mountain bikes"),
     ("12-Speed Carbon Road Bike", "Road Bikes", "Road bikes"),
+    ("Zipp 303 Firecrest Carbon Road Wheelset", "Wheels", "Wheelsets"),
+    ("Shimano Ultegra Di2 12-Speed Groupset", "Drivetrain", "Groupsets"),
 ])
 def test_legitimate_bikes_and_framesets_survive_part_and_wheel_guards(name, kind, expected):
     assert classify(Product(name, "https://example.com/products/bike", 1800, 3200, product_type=kind)).category == expected

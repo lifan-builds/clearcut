@@ -366,4 +366,36 @@ if (form) {
     } catch (_) { showToast('This browser could not save the search. Bookmark this page instead.'); }
   });
   renderSaved();
+
+  const snowLockerBtn = document.getElementById('snow-locker-btn');
+  function syncSnowLocker() {
+    if (!snowLockerBtn) return;
+    let locker = {};
+    try { locker = JSON.parse(localStorage.getItem('clearcut-locker') || '{}') || {}; } catch (_) {}
+    const cur = (form.elements.size?.value || '').trim();
+    const savedSz = (locker.snow || '').trim();
+    if (savedSz && cur !== savedSz) {
+      snowLockerBtn.hidden = false;
+      snowLockerBtn.textContent = 'My Locker: ' + savedSz;
+      snowLockerBtn.onclick = () => {
+        form.elements.size.value = savedSz;
+        refreshDeals();
+        syncSnowLocker();
+      };
+    } else if (cur && cur !== savedSz) {
+      snowLockerBtn.hidden = false;
+      snowLockerBtn.textContent = 'Save ' + cur + ' to Locker';
+      snowLockerBtn.onclick = () => {
+        try {
+          locker.snow = cur;
+          localStorage.setItem('clearcut-locker', JSON.stringify(locker));
+          snowLockerBtn.textContent = 'Saved: ' + cur;
+        } catch (_) {}
+      };
+    } else {
+      snowLockerBtn.hidden = true;
+    }
+  }
+  form.elements.size?.addEventListener('input', syncSnowLocker);
+  syncSnowLocker();
 }

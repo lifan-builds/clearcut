@@ -1,5 +1,7 @@
 """Server-rendered catalog app with read-only snapshots and validated filters."""
 import os
+import re
+from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlencode
@@ -31,6 +33,8 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
         "snow": os.environ.get("SNOW_SITE_URL", "https://freshpowder.clifan.com").rstrip("/"),
         "cycling": os.environ.get("CYCLING_SITE_URL", "https://bigring.clifan.com").rstrip("/"),
         "tools": os.environ.get("TOOLS_SITE_URL", "https://benchdrop.clifan.com").rstrip("/"),
+        "camp": os.environ.get("CAMP_SITE_URL", "https://highline.clifan.com").rstrip("/"),
+        "watersports": os.environ.get("WATER_SITE_URL", "https://tideline.clifan.com").rstrip("/"),
     }
     templates.env.filters["money"] = lambda value: f"${value:,.2f}" if value % 1 else f"${value:,.0f}"
     templates.env.filters["date"] = (
@@ -68,14 +72,51 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
         filters = {"q": q, "category": category, "brand": brand, "store": store, "size": size, "format": format,
                    "platform": platform, "min_reference": min_reference, "max_price": max_price,
                    "min_discount": min_discount, "stock": stock, "page": page}
-        result = query(sources(), filters, brand_aliases=catalog.brand_aliases)
+        all_sources = sources()
+        result = query(all_sources, filters, brand_aliases=catalog.brand_aliases)
         if size:
             requested_size_key = size_key(size)
             filters["size"] = next((label for label in result["facets"]["size"]
                                     if size_key(label) == requested_size_key), size)
+        now_utc = datetime.now(UTC)
+
+        def sig_for(brand_val: str, name_val: str, cat_val: str) -> tuple[str, str, str] | None:
+            if not brand_val or brand_val == "Unspecified":
+                return None
+            lower = name_val.casefold()
+            if lower.startswith(brand_val.casefold() + " "):
+                lower = lower[len(brand_val) + 1:]
+            lower = re.sub(r"\b20\d{2}\b", " ", lower)
+            toks = [t for t in re.findall(r"[a-z0-9.]+", lower) if t not in {"bike", "bikes", "road", "gravel", "mountain", "carbon", "kit", "bare", "tool", "wetsuit", "tent", "pack"}]
+            return (brand_val.casefold(), " ".join(toks[:3]), cat_val) if len(toks) >= 2 else None
+
+        model_stores: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+        for src in all_sources:
+            if not is_fresh(src["successful_at"], now_utc):
+                continue
+            for prod in src["products"]:
+                b_name = manufacturer_name(prod["brand"], brand_aliases=catalog.brand_aliases) if catalog.brand_aliases else prod["brand"]
+                s_key = sig_for(b_name, prod["name"], prod["category"])
+                if s_key:
+                    model_stores[s_key].add(src["name"])
+
         for card in result["cards"]:
             card["history_url"] = "/history?" + urlencode({"source": card["store"], "product": card["url"],
                                                            "variant": card["offer"]["variant_key"]})
+            s_key = sig_for(card["brand"], card["name"], card["category"])
+            other_cnt = max(0, len(model_stores[s_key] - {card["store"]})) if s_key else 0
+            card["other_shops"] = other_cnt
+            card["compare_url"] = ("/?" + urlencode({"q": f"{card['brand']} {s_key[1]}"}) + "#deals") if other_cnt and s_key else ""
+            if database.exists():
+                hist = read_offer_history(database, catalog.slug, card["store"], card, card["offer"],
+                                          now=now_utc, brand_aliases=catalog.brand_aliases)
+                if len(hist) >= 2:
+                    prev_price = hist[1]["price"]
+                    min_45d = min(h["price"] for h in hist)
+                    if prev_price > card["offer"]["current_price"]:
+                        card["price_drop"] = round(prev_price - card["offer"]["current_price"], 2)
+                    elif card["offer"]["current_price"] <= min_45d and len(hist) >= 3:
+                        card["is_45d_low"] = True
 
         def page_url(number):
             return "/?" + urlencode({**filters, "page": number, "stock": str(stock).lower()}) + "#deals"

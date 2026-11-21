@@ -19,8 +19,8 @@
 {% if structured_data %}<script type="application/ld+json">{{ structured_data|tojson }}</script>{% endif %}
 {% if breadcrumb_data %}<script type="application/ld+json">{{ breadcrumb_data|tojson }}</script>{% endif %}
 <meta name="theme-color" content="#0b1a2a"><link rel="icon" href="/static/img/favicon.ico">
-<link rel="stylesheet" href="/static/field-guide.css?v=12">
-<script src="https://unpkg.com/htmx.org@2.0.4" defer></script><script src="/static/analytics.js?v=1" defer></script><script src="/static/field-guide.js?v=10" defer></script>
+<link rel="stylesheet" href="/static/field-guide.css?v=14">
+<script src="https://unpkg.com/htmx.org@2.0.4" defer></script><script src="/static/analytics.js?v=1" defer></script><script src="/static/field-guide.js?v=12" defer></script>
 <noscript><style>.preset-bar, #view-toggle, #save-search, .share-btn { display: none; }</style></noscript>
 </head>
 <body id="top">
@@ -37,12 +37,15 @@
 
     <nav class="world-dock" aria-label="Clearcut gear worlds">
       <a class="dock-pill" href="{{ net.hub }}/">All worlds</a>
-      <a class="dock-pill is-current" href="{{ net.snow }}/" aria-current="page"><span class="dock-idx">01</span>FreshPowder</a>
-      <a class="dock-pill" href="{{ net.cycling }}/"><span class="dock-idx">02</span>Big Ring</a>
-      <a class="dock-pill" href="{{ net.tools }}/"><span class="dock-idx">03</span>Bench Drop</a>
+      <a class="dock-pill is-current" href="{{ net.snow }}/" aria-current="page"><span class="dock-idx">01</span>Snow</a>
+      <a class="dock-pill" href="{{ net.cycling }}/"><span class="dock-idx">02</span>Cycling</a>
+      <a class="dock-pill" href="{{ net.tools }}/"><span class="dock-idx">03</span>Tools</a>
+      <a class="dock-pill" href="{{ net.camp }}/"><span class="dock-idx">04</span>Camp</a>
+      <a class="dock-pill" href="{{ net.watersports }}/"><span class="dock-idx">05</span>Water</a>
     </nav>
 
     <nav class="utility-nav" aria-label="Main navigation">
+      <button type="button" class="locker-chip" id="snow-locker-btn" hidden></button>
       <a href="/products">Compare</a>
       <a href="/how-it-works">How it works</a>
       <a class="nav-pill" href="/alerts">Alerts</a>
@@ -56,7 +59,7 @@
   <div class="footer-shell">
     <div class="footer-brand">
       <a class="wordmark" href="/">FreshPowder</a>
-      <p>Part of <a href="{{ net.hub }}/">Clearcut</a> alongside <a href="{{ net.cycling }}/">Big Ring</a> and <a href="{{ net.tools }}/">Bench Drop</a>. Top ski and snowboard markdowns across 28+ North American&nbsp;shops.</p>
+      <p>Part of <a href="{{ net.hub }}/">Clearcut</a> alongside <a href="{{ net.cycling }}/">Big Ring</a>, <a href="{{ net.tools }}/">Bench Drop</a>, <a href="{{ net.camp }}/">Highline</a>, and <a href="{{ net.watersports }}/">Tideline</a>. Top ski and snowboard markdowns across 30 North American&nbsp;shops.</p>
     </div>
     <div class="footer-meta">
       <p>Updated daily across USD and CAD retailers.</p>

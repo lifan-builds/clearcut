@@ -55,7 +55,7 @@ _PRIMARY_PART_RE = re.compile(
     r"(?:mounting|pivot|bearing|rebuild|service|seal|bleed|tubeless|conversion|motor|mid[- ]?drive|hub motor) (?:kits?|hardware)|"
     r"(?:replacement|spare|e-?bike|external|internal) batter(?:y|ies)|range extenders?|"
     r"battery (?:packs?|chargers?|mounts?|covers?|cables?)|chargers?|power supplies|"
-    r"wheelsets?|groupsets?|cranksets?|cassettes?|chainrings?|bottom brackets?|headsets?|"
+    r"cranksets?|cassettes?|chainrings?|bottom brackets?|headsets?|"
     r"dropper posts?|saddles?|pedals?|cleats?|bar tape|tire liners?|inner tubes?|"
     r"(?:bike|bicycle|frame|saddle|handlebar|seat|top ?tube|bikepacking|travel|wheel|gear|hydration) bags?|panniers?|"
     r"(?:bike|bicycle|hitch|roof|trunk|cargo|rear|front|pannier|wall|storage) racks?|"
@@ -111,6 +111,10 @@ def classify(product: Product) -> Classification | None:
     primary_title = re.split(r"\s+(?:with\s+|w/\s*|including\s+)", title, maxsplit=1)[0]
     if _PRIMARY_APPAREL_RE.search(f"{primary_title} {kind}") or _PRIMARY_PART_RE.search(primary_title):
         return None
+    if re.search(r"\bwheelsets?\b", primary_title) and not re.search(r"\b(bags?|covers?|skewers?|valves?|tapes?|bearings?|decals?|stickers?)\b", primary_title):
+        return Classification("Wheelsets")
+    if re.search(r"\bgroupsets?\b", primary_title) and not re.search(r"\b(cleaners?|tools?|cables?|bolts?|spacers?|covers?)\b", primary_title):
+        return Classification("Groupsets")
     unbranded_title = title.replace(product.brand.casefold(), "") if product.brand else title
     unbranded_primary = primary_title.replace(product.brand.casefold(), "") if product.brand else primary_title
     if _UNBRANDED_COMPONENT_RE.search(unbranded_primary) and not re.search(
@@ -159,11 +163,11 @@ CATALOG = Catalog(
     name="Big Ring",
     eyebrow="THE CYCLING DEAL INDEX",
     headline="More bike.\nLess money.",
-    description="Big discounts on complete bikes and framesets. The deepest percentage cuts come first, with the exact size and price attached.",
-    categories=("Mountain bikes", "Road bikes", "Gravel bikes", "Electric bikes", "Framesets", "Other complete bikes"),
+    description="Big discounts on complete bikes, framesets, carbon wheelsets, and electronic groupsets—ranked strictly by percentage off.",
+    categories=("Mountain bikes", "Road bikes", "Gravel bikes", "Electric bikes", "Framesets", "Wheelsets", "Groupsets", "Other complete bikes"),
     sources=(
         _shopify("Incycle Bicycles", "www.incycle.com", "sale-bicycles"),
-        _shopify("RA Cycles", "racycles.com", "bikes"),
+        _shopify("RA Cycles", "racycles.com", "bikes", "wheels"),
         _shopify("evo", "www.evo.com", "bikes"),
         RetailerConfig(
             name="Bike Closet",
@@ -171,6 +175,8 @@ CATALOG = Catalog(
             parser_type="bikecloset",
             scrape_urls=["https://bikecloset.com/wp-json/wc/store/v1/products?category=3411&type=variable&per_page=100&page=1&orderby=id&order=asc"],
         ),
+        _shopify("Ari Bikes", "aribikes.com", "outlet"),
+        _shopify("Thunder Mountain Bikes", "thundermountainbikes.com", "bikes-on-sale", "wheels"),
         _shopify("Gravity Coalition", "gravitycoalition.com", "all-bikes-frames", "bike-sale"),
         _shopify("Bicycle Warehouse", "bicyclewarehouse.com", "bikes-on-sale"),
         _shopify("BikesOnline", "bikesonline.com", "sale"),

@@ -1,0 +1,23 @@
+/* Edition 04 — Highline (Granite Ridge & Alpenglow Amber) */
+.camp {
+  --ink: #141f1a;
+  --ink-secondary: #2c3d34;
+  --accent: #ffa93a;
+  --accent-ink: #141f1a;
+  --paper: #edf1ed;
+  --surface: #ffffff;
+  --panel: #dfe6df;
+  --well: #f4f7f4;
+  --line: rgba(20, 31, 26, 0.13);
+  --line-strong: rgba(20, 31, 26, 0.28);
+  --muted: #4c5b53;
+  --hero-scrim-a: rgba(14, 21, 18, 0.92);
+  --hero-scrim-b: rgba(14, 21, 18, 0.6);
+  --hero-scrim-c: rgba(14, 21, 18, 0.14);
+  --savings: #16603b;
+  --savings-bg: #dff0e6;
+  --focus: #16603b;
+  --selection: #fae2bf;
+  background: var(--paper);
+  color: var(--ink);
+}

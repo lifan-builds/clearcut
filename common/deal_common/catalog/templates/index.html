@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
-{% set banner_img = 'img/tools-banner.jpg' if catalog.slug == 'tools' else 'img/cycling-banner.jpg' %}
+{% set banner_map = {'cycling': 'img/cycling-banner.jpg', 'tools': 'img/tools-banner.jpg', 'camp': 'img/camp-banner.jpg', 'watersports': 'img/water-banner.jpg'} %}
+{% set banner_img = banner_map.get(catalog.slug, 'img/cycling-banner.jpg') %}
 {% block content %}
 <section class="world-hero-wrap">
   <div class="world-hero">
@@ -157,11 +158,11 @@
               <span>USD</span>
               <span class="reference"><s>{{ offer.original_price|money }}</s></span>
             </div>
-            <p class="savings">Save {{ offer.savings|money }}</p>
+            <p class="savings">Save {{ offer.savings|money }}{% if product.price_drop %} · <span class="drop-pill">Down {{ product.price_drop|money }}</span>{% elif product.is_45d_low %} · <span class="drop-pill">45d low</span>{% endif %}</p>
             {% if offer.price_note %}<p class="price-note">{{ offer.price_note }}</p>{% endif %}
           </div>
 
-          <p class="stock">{% if offer.availability == 'in_stock' %}<span class="stock-dot is-in"></span>In stock{% else %}<span class="stock-dot"></span>Check stock at shop{% endif %}{% if offer.size %} · <strong>{{ offer.size }}</strong>{% endif %}</p>
+          <p class="stock">{% if offer.availability == 'in_stock' %}<span class="stock-dot is-in"></span>In stock{% else %}<span class="stock-dot"></span>Check stock at shop{% endif %}{% if offer.size %} · <strong>{{ offer.size }}</strong>{% endif %}{% if product.other_shops %} · <a class="other-shops-link" href="{{ product.compare_url }}">+{{ product.other_shops }} shop{{ 's' if product.other_shops != 1 else '' }}</a>{% endif %}</p>
           {% if offer.availability_note %}<p class="stock stock-extra">{{ offer.availability_note }}</p>{% endif %}
 
           <a class="merchant" href="{{ offer.url }}" target="_blank" rel="noopener noreferrer">

@@ -11,11 +11,11 @@
   {% if public_url %}<link rel="canonical" href="{{ public_url }}{{ request.url.path }}"><meta property="og:url" content="{{ public_url }}{{ request.url.path }}">{% endif %}
   <meta name="theme-color" content="{{ catalog.theme_color }}">
   <title>{% block title %}{{ catalog.name }} · Deep discounts, serious gear{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', path='catalog.css') }}?v=6">
-  <link rel="stylesheet" href="{{ url_for('brand', path='brand.css') }}?v=4">
-  <script src="{{ url_for('static', path='catalog.js') }}?v=3" defer></script>
+  <link rel="stylesheet" href="{{ url_for('static', path='catalog.css') }}?v=8">
+  <link rel="stylesheet" href="{{ url_for('brand', path='brand.css') }}?v=5">
+  <script src="{{ url_for('static', path='catalog.js') }}?v=5" defer></script>
 </head>
-<body id="top" class="{{ catalog.slug }}" data-catalog="{{ catalog.slug }}">
+<body id="top" class="{{ catalog.slug }}" data-catalog="{{ catalog.slug }}" data-locker-param="{{ 'platform' if catalog.formats else 'size' }}">
   <a class="skip" href="#main">Skip to content</a>
 
   <header class="site-header">
@@ -24,6 +24,10 @@
         <span class="brand-mark" aria-hidden="true">
           {% if catalog.slug == 'tools' %}
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11l3 3v3h-3l-2 4H6l1.5-5H3z"/></svg>
+          {% elif catalog.slug == 'camp' %}
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 16 10 4l7.5 12zM10 4v12"/></svg>
+          {% elif catalog.slug == 'watersports' %}
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12.5c2-2 4-2 6 0s4 2 6 0 2.5-1.5 3-0.5M4 7.5c2-1.8 4-1.8 6 0s4 1.8 6 0"/></svg>
           {% else %}
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="13.5" r="3.5"/><circle cx="14.5" cy="13.5" r="3.5"/><path d="M5.5 13.5 9 7h4l1.5 6.5M9 7l2.5 6.5"/></svg>
           {% endif %}
@@ -33,13 +37,15 @@
 
       <nav class="world-dock" aria-label="Clearcut gear worlds">
         <a class="dock-pill" href="{{ net.hub }}/">All worlds</a>
-        <a class="dock-pill" href="{{ net.snow }}/"><span class="dock-idx">01</span>FreshPowder</a>
-        <a class="dock-pill{% if catalog.slug == 'cycling' %} is-current{% endif %}" href="{{ net.cycling }}/" {% if catalog.slug == 'cycling' %}aria-current="page"{% endif %}><span class="dock-idx">02</span>Big Ring</a>
-        <a class="dock-pill{% if catalog.slug == 'tools' %} is-current{% endif %}" href="{{ net.tools }}/" {% if catalog.slug == 'tools' %}aria-current="page"{% endif %}><span class="dock-idx">03</span>Bench Drop</a>
+        <a class="dock-pill" href="{{ net.snow }}/"><span class="dock-idx">01</span>Snow</a>
+        <a class="dock-pill{% if catalog.slug == 'cycling' %} is-current{% endif %}" href="{{ net.cycling }}/" {% if catalog.slug == 'cycling' %}aria-current="page"{% endif %}><span class="dock-idx">02</span>Cycling</a>
+        <a class="dock-pill{% if catalog.slug == 'tools' %} is-current{% endif %}" href="{{ net.tools }}/" {% if catalog.slug == 'tools' %}aria-current="page"{% endif %}><span class="dock-idx">03</span>Tools</a>
+        <a class="dock-pill{% if catalog.slug == 'camp' %} is-current{% endif %}" href="{{ net.camp }}/" {% if catalog.slug == 'camp' %}aria-current="page"{% endif %}><span class="dock-idx">04</span>Camp</a>
+        <a class="dock-pill{% if catalog.slug == 'watersports' %} is-current{% endif %}" href="{{ net.watersports }}/" {% if catalog.slug == 'watersports' %}aria-current="page"{% endif %}><span class="dock-idx">05</span>Water</a>
       </nav>
 
       <nav class="utility-nav" aria-label="Main">
-        <a href="/#deals">Deals</a>
+        <button type="button" class="locker-trigger" id="locker-trigger" hidden></button>
         <a class="nav-pill" href="/sources">Tracked shops</a>
       </nav>
     </div>
@@ -60,6 +66,8 @@
           <a href="{{ net.snow }}/">FreshPowder</a>
           <a href="{{ net.cycling }}/">Big Ring</a>
           <a href="{{ net.tools }}/">Bench Drop</a>
+          <a href="{{ net.camp }}/">Highline</a>
+          <a href="{{ net.watersports }}/">Tideline</a>
           <a href="/sources">Tracked shops</a>
           <a class="back-top" href="#top">Top<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M8 12.5v-9M4.5 7 8 3.5 11.5 7"/></svg></a>
         </div>

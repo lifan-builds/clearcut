@@ -1,0 +1,23 @@
+/* Edition 05 — Tideline (Pacific Swell & Reef Turquoise) */
+.watersports {
+  --ink: #0a202b;
+  --ink-secondary: #1e3e4d;
+  --accent: #52e8d8;
+  --accent-ink: #0a202b;
+  --paper: #eaf1f4;
+  --surface: #ffffff;
+  --panel: #dae7ed;
+  --well: #f1f6f8;
+  --line: rgba(10, 32, 43, 0.13);
+  --line-strong: rgba(10, 32, 43, 0.28);
+  --muted: #465d69;
+  --hero-scrim-a: rgba(7, 24, 33, 0.92);
+  --hero-scrim-b: rgba(7, 24, 33, 0.6);
+  --hero-scrim-c: rgba(7, 24, 33, 0.14);
+  --savings: #0b645c;
+  --savings-bg: #daf2ef;
+  --focus: #0b645c;
+  --selection: #c5f2ec;
+  background: var(--paper);
+  color: var(--ink);
+}

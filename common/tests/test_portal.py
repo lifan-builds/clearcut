@@ -23,7 +23,8 @@ def test_portal_homepage_assets_and_validated_handoff_redirects(tmp_path):
     assert home.status_code == 200
     assert not absent.exists()
     assert "Choose your terrain." in home.text
-    assert "FreshPowder" in home.text and "Big Ring" in home.text and "Bench Drop" in home.text
+    for world_name in ("FreshPowder", "Big Ring", "Bench Drop", "Highline", "Tideline"):
+        assert world_name in home.text
     assert "default-src 'self'" in home.headers["Content-Security-Policy"]
     assert "X-Robots-Tag" not in home.headers
 
@@ -35,7 +36,7 @@ def test_portal_homepage_assets_and_validated_handoff_redirects(tmp_path):
     assert client.get("/portal-static/portal.css").status_code == 200
     assert client.get("/portal-static/portal.js").status_code == 200
     assert client.get("/static/fonts/Manrope.ttf").status_code == 200
-    assert client.get("/healthz").json() == {"status": "ready", "service": "clearcut-portal", "catalogs": 3}
+    assert client.get("/healthz").json() == {"status": "ready", "service": "clearcut-portal", "catalogs": 5}
     assert "Sitemap: https://clearcut.clifan.com/sitemap.xml" in client.get("/robots.txt").text
     assert "https://clearcut.clifan.com/" in client.get("/sitemap.xml").text
 

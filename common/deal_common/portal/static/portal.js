@@ -11,6 +11,10 @@
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let activeIdx = 0;
 
+  function pad2(n) {
+    return String(n).padStart(2, "0");
+  }
+
   function setActive(index) {
     activeIdx = Math.max(0, Math.min(cards.length - 1, index));
     const activeCard = cards[activeIdx];
@@ -19,7 +23,7 @@
     cards.forEach((c, i) => c.classList.toggle("is-active", i === activeIdx));
     dockPills.forEach((p) => p.classList.toggle("is-current", p.dataset.worldTarget === world));
     if (counterEl) {
-      counterEl.textContent = `0${activeIdx + 1} / 0${cards.length}`;
+      counterEl.textContent = `${pad2(activeIdx + 1)} / ${pad2(cards.length)}`;
     }
     if (progressBar) {
       progressBar.style.width = `${((activeIdx + 1) / cards.length) * 100}%`;
@@ -37,7 +41,7 @@
   }
 
   function syncFromScroll() {
-    const viewportCenter = reel.scrollLeft + reel.clientWidth * 0.38;
+    const viewportCenter = reel.scrollLeft + reel.clientWidth * 0.35;
     let closest = 0;
     let minDist = Infinity;
     cards.forEach((card, idx) => {
@@ -122,5 +126,82 @@
     card.addEventListener("focusin", () => setActive(idx));
   });
 
+  // My Gear Locker
+  const LOCKER_KEY = "clearcut-locker";
+  const dialog = document.getElementById("locker-dialog");
+  const openBtn = document.getElementById("locker-open");
+  const closeBtn = document.getElementById("locker-close");
+  const clearBtn = document.getElementById("locker-clear");
+  const lockerForm = document.getElementById("locker-form");
+  const lockerLabel = document.getElementById("locker-btn-label");
+
+  function readLocker() {
+    try {
+      return JSON.parse(localStorage.getItem(LOCKER_KEY) || "{}") || {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function applyLockerLinks() {
+    const locker = readLocker();
+    const count = Object.values(locker).filter((v) => typeof v === "string" && v.trim()).length;
+    if (openBtn && lockerLabel) {
+      openBtn.classList.toggle("has-sizes", count > 0);
+      lockerLabel.textContent = count > 0 ? `My Locker (${count})` : "My Locker";
+    }
+    document.querySelectorAll("a[data-world-enter], a.dock-pill[data-world-target]").forEach((link) => {
+      const world = link.dataset.worldEnter || link.dataset.worldTarget;
+      const param = link.dataset.sizeParam || "size";
+      const anchor = link.dataset.anchor || "";
+      const base = link.dataset.baseHref || link.getAttribute("href").split("?")[0].split("#")[0];
+      link.dataset.baseHref = base;
+      const val = (locker[world] || "").trim();
+      const labelSpan = link.querySelector(".enter-label");
+      if (val) {
+        const qs = new URLSearchParams({ [param]: val }).toString();
+        link.href = `${base}?${qs}${anchor}`;
+        if (labelSpan && link.dataset.baseLabel) {
+          labelSpan.textContent = `${link.dataset.baseLabel} · ${val}`;
+        }
+      } else {
+        link.href = base;
+        if (labelSpan && link.dataset.baseLabel) {
+          labelSpan.textContent = link.dataset.baseLabel;
+        }
+      }
+    });
+  }
+
+  openBtn?.addEventListener("click", () => {
+    if (!dialog || !lockerForm) return;
+    const locker = readLocker();
+    for (const key of ["snow", "cycling", "tools", "camp", "watersports"]) {
+      if (lockerForm.elements[key]) lockerForm.elements[key].value = locker[key] || "";
+    }
+    dialog.showModal();
+  });
+  closeBtn?.addEventListener("click", () => dialog?.close());
+  clearBtn?.addEventListener("click", () => {
+    try {
+      localStorage.removeItem(LOCKER_KEY);
+    } catch (_) {}
+    if (lockerForm) lockerForm.reset();
+    applyLockerLinks();
+    dialog?.close();
+  });
+  lockerForm?.addEventListener("submit", () => {
+    const next = {};
+    for (const key of ["snow", "cycling", "tools", "camp", "watersports"]) {
+      const val = (lockerForm.elements[key]?.value || "").trim();
+      if (val) next[key] = val;
+    }
+    try {
+      localStorage.setItem(LOCKER_KEY, JSON.stringify(next));
+    } catch (_) {}
+    applyLockerLinks();
+  });
+
   syncFromScroll();
+  applyLockerLinks();
 })();

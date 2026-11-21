@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi.templating import Jinja2Templates
 
 from aggregator.comparisons import comparison_path
+from aggregator.config import STORES
 
 CATEGORIES = {
     "skis": (
@@ -55,7 +56,12 @@ def network_urls() -> dict[str, str]:
         "snow": site_url(),
         "cycling": os.environ.get("CYCLING_SITE_URL", "https://bigring.clifan.com").rstrip("/"),
         "tools": os.environ.get("TOOLS_SITE_URL", "https://benchdrop.clifan.com").rstrip("/"),
+        "camp": os.environ.get("CAMP_SITE_URL", "https://highline.clifan.com").rstrip("/"),
+        "watersports": os.environ.get("WATER_SITE_URL", "https://tideline.clifan.com").rstrip("/"),
     }
+
+
+US_TAX_FREE_STORES = frozenset(s.name for s in STORES if s.tax_free and s.currency == "USD")
 
 
 def page_context(request) -> dict:
@@ -77,3 +83,4 @@ templates = Jinja2Templates(directory=str(TEMPLATE_DIR), context_processors=[pag
 templates.env.auto_reload = True
 templates.env.globals["comparison_path"] = comparison_path
 templates.env.globals["network_urls"] = network_urls
+templates.env.globals["us_tax_free_stores"] = US_TAX_FREE_STORES

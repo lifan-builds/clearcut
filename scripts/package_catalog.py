@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
-for source in ("common", "catalogs/cycling/src", "catalogs/tools/src"):
+for source in ("common", "catalogs/cycling/src", "catalogs/tools/src", "catalogs/camp/src", "catalogs/watersports/src"):
     sys.path.insert(0, str(ROOT / source))
 
 from deal_common.catalog.health import snapshot_health
@@ -27,8 +27,14 @@ def package(slug: str, database: Path, output: Path, public_url: str | None = No
     elif slug == "tools":
         from tool_deals.catalog import CATALOG
         module = "tool_deals"
+    elif slug == "camp":
+        from camp_deals.catalog import CATALOG
+        module = "camp_deals"
+    elif slug == "watersports":
+        from water_deals.catalog import CATALOG
+        module = "water_deals"
     else:
-        raise ValueError("Choose cycling or tools")
+        raise ValueError("Choose cycling, tools, camp, or watersports")
     if public_url:
         parsed = urlsplit(public_url)
         if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.query or parsed.fragment or parsed.path not in ("", "/"):
@@ -95,7 +101,7 @@ def package(slug: str, database: Path, output: Path, public_url: str | None = No
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("catalog", choices=("cycling", "tools"))
+    parser.add_argument("catalog", choices=("cycling", "tools", "camp", "watersports"))
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--public-url")

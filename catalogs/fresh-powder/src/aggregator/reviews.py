@@ -452,9 +452,10 @@ async def scrape_tgr_reviews(
 
 # Words to strip from product names before matching
 _STRIP_WORDS = re.compile(
-    r"\b(20\d{2}|men'?s?|women'?s?|unisex|adult|jr|junior|youth|kids?|"
+    r"\b(20\d{2}(?:[-/]\d{2,4})?|\d{2}[-/]\d{2}|men'?s?|women'?s?|unisex|adult|jr|junior|youth|kids?|"
     r"ski|skis|snowboard|snowboards|boot|boots|binding|bindings|helmet|helmets|"
     r"goggle|goggles|glove|gloves|pant|pants|jacket|jackets|"
+    r"all[- ]mountain|freeride|backcountry|alpine|touring|carving|powder|park|pair|flat|"
     r"system|w/|with)\b",
     re.IGNORECASE,
 )

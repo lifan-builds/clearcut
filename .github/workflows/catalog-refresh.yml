@@ -33,19 +33,34 @@ jobs:
             command: tool-deals
             project_secret: TOOLS_VERCEL_PROJECT_ID
             site_variable: TOOLS_SITE_URL
+          - catalog: camp
+            command: camp-deals
+            project_secret: CAMP_VERCEL_PROJECT_ID
+            site_variable: CAMP_SITE_URL
+          - catalog: watersports
+            command: water-deals
+            project_secret: WATER_VERCEL_PROJECT_ID
+            site_variable: WATER_SITE_URL
     env:
       SITE_URL: ${{ vars[matrix.site_variable] }}
       VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
     steps:
       - name: Verify deployment configuration
+        id: cfg
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
         run: |
-          for key in SITE_URL VERCEL_PROJECT_ID VERCEL_ORG_ID VERCEL_TOKEN DATA_REPO_TOKEN; do
+          for key in VERCEL_ORG_ID VERCEL_TOKEN DATA_REPO_TOKEN; do
             if [ -z "${!key}" ]; then echo "::error::Missing configuration: $key"; exit 1; fi
           done
+          if [ -z "$SITE_URL" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "deploy_configured=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping Vercel deploy for ${{ matrix.catalog }} (SITE_URL/VERCEL_PROJECT_ID not yet set); snapshot will still refresh."
+          else
+            echo "deploy_configured=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -72,7 +87,9 @@ jobs:
         run: python scripts/audit_merchants.py --catalog ${{ matrix.catalog }} --database "$RUNNER_TEMP/catalog.db" --output "$RUNNER_TEMP/merchant-audit.json" --seed "$(date -u +%Y%m%d)"
       - name: Prepare read-only site and snapshot report
         run: |
-          python scripts/package_catalog.py ${{ matrix.catalog }} --database "$RUNNER_TEMP/catalog.db" --output "$RUNNER_TEMP/site" --public-url "$SITE_URL"
+          site_args=(${{ matrix.catalog }} --database "$RUNNER_TEMP/catalog.db" --output "$RUNNER_TEMP/site")
+          if [ -n "$SITE_URL" ]; then site_args+=(--public-url "$SITE_URL"); fi
+          python scripts/package_catalog.py "${site_args[@]}"
           python scripts/audit_catalog.py --catalog ${{ matrix.catalog }} --database "$RUNNER_TEMP/catalog.db" > "$RUNNER_TEMP/snapshot-audit.json"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -92,8 +109,10 @@ jobs:
           cp "$RUNNER_TEMP/catalog.db" "$RUNNER_TEMP/$CATALOG.db"
           gh release upload latest-data "$RUNNER_TEMP/$CATALOG.db" --clobber --repo lifan-builds/clearcut-data
       - name: Deploy the validated standalone catalog bundle
+        if: steps.cfg.outputs.deploy_configured == 'true'
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: vercel deploy "$RUNNER_TEMP/site" --yes --prod --token "$VERCEL_TOKEN"
       - name: Verify public site serves this exact snapshot
+        if: steps.cfg.outputs.deploy_configured == 'true'
         run: python scripts/verify_catalog_live.py --receipt "$RUNNER_TEMP/site/BUILD-RECEIPT.json" --site-url "$SITE_URL"

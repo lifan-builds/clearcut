@@ -90,3 +90,11 @@ jobs:
           curl --fail --silent --show-error --retry 2 --max-time 30 --request POST "$VERCEL_DEPLOY_HOOK_URL" --output /dev/null
       - name: Verify production snapshot
         run: python scripts/verify_live_snapshot.py scrape-report.json
+      - name: Send rare-deal alerts when configured
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ALERT_FROM_EMAIL: ${{ secrets.ALERT_FROM_EMAIL }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: python scripts/send_deal_alerts.py --deals-db catalogs/fresh-powder/data/deals.db

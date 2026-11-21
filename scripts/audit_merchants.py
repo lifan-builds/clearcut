@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-for relative in ("common", "catalogs/cycling/src", "catalogs/tools/src", "catalogs/fresh-powder/src"):
+for relative in ("common", "catalogs/cycling/src", "catalogs/tools/src", "catalogs/camp/src", "catalogs/watersports/src", "catalogs/fresh-powder/src"):
     sys.path.insert(0, str(ROOT / relative))
 from deal_common.catalog.audit import audit_sample, audit_summary, select_sample
 from deal_common.catalog.query import query
@@ -42,8 +42,12 @@ def population(path, catalog):
     else:
         if catalog == "cycling":
             from cycling_deals.catalog import CATALOG
-        else:
+        elif catalog == "tools":
             from tool_deals.catalog import CATALOG
+        elif catalog == "camp":
+            from camp_deals.catalog import CATALOG
+        else:
+            from water_deals.catalog import CATALOG
         domains = {s.name: s.domain for s in CATALOG.sources}
         rows = [s for s in read_sources(path, catalog) if s["name"] in domains]
         filters = {"min_reference": CATALOG.default_reference, "max_price": 0, "min_discount": 0, "stock": True, "page": 1}
@@ -56,7 +60,7 @@ def population(path, catalog):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--catalog", choices=("snow", "cycling", "tools"), required=True)
+    parser.add_argument("--catalog", choices=("snow", "cycling", "tools", "camp", "watersports"), required=True)
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seed", type=int, default=20261102)

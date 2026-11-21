@@ -83,7 +83,7 @@ def restore(catalog: str, destination: Path, *, bootstrap=False, transport=None,
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("catalog", choices=("cycling", "tools"))
+    parser.add_argument("catalog", choices=("cycling", "tools", "camp", "watersports"))
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--bootstrap", action="store_true")
     args = parser.parse_args()

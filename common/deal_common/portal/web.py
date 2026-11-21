@@ -58,6 +58,7 @@ def create_portal_app(
     def index(request: Request, catalog: str = Query("snow", max_length=24)):
         selected_slug = catalog if catalog in by_slug else entries[0].slug
         desks = []
+        featured_cuts = []
         total_sources = 0
         total_live_deals = 0
         for entry in entries:
@@ -65,6 +66,8 @@ def create_portal_app(
             summary = entry.summary_loader() if entry.summary_loader else None
             if summary and summary.live_deals:
                 total_live_deals += summary.live_deals
+                with_img = [h for h in summary.highlights if h.image_url]
+                featured_cuts.extend((with_img or list(summary.highlights))[:2])
             category_links = [
                 {
                     "label": label,
@@ -74,11 +77,14 @@ def create_portal_app(
             ]
             desks.append({"catalog": entry, "summary": summary, "category_links": category_links})
 
+        featured_cuts.sort(key=lambda h: (h.image_url is None, -h.discount_pct, -(h.original_price - h.current_price)))
+
         return templates.TemplateResponse(
             request=request,
             name="index.html",
             context={
                 "desks": desks,
+                "featured_cuts": featured_cuts[:8],
                 "selected_slug": selected_slug,
                 "selected_catalog": by_slug[selected_slug],
                 "total_sources": total_sources,
