@@ -1,6 +1,8 @@
 name: Refresh cycling and tools
 
 on:
+  schedule:
+    - cron: '15 11 * * *'
   workflow_dispatch:
     inputs:
       bootstrap_history:

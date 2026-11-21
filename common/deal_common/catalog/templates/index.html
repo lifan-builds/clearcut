@@ -1,63 +1,211 @@
 {% extends 'base.html' %}
+{% set banner_img = 'img/tools-banner.jpg' if catalog.slug == 'tools' else 'img/cycling-banner.jpg' %}
 {% block content %}
-<section class="catalog-intro">
-  <div><p class="eyebrow">{{ catalog.eyebrow }} · DEEPEST DISCOUNTS FIRST</p>
-  <h1>{{ catalog.headline.replace('\n', ' ') }}</h1><p>{{ catalog.description }}</p></div>
-  <img src="{{ url_for('brand', path='hero.svg') }}" alt="" width="180" height="110" aria-hidden="true">
-</section>
-<section id="deals" class="deal-section">
-  <div class="section-heading"><h2>Find your next upgrade<span class="brand-dot">.</span></h2><button type="button" id="save-search" class="quiet-button">Save this search <span aria-hidden="true">＋</span></button></div>
-  <div class="saved-searches" id="saved-searches" aria-label="Saved searches"></div><p id="save-status" role="status" class="save-status"></p>
-  <div class="shop-layout">
-    <details class="filter-panel" open>
-      <summary>Refine your search <span aria-hidden="true">＋</span></summary>
-      <form action="/#deals" method="get" id="filters">
-        <label>Search<input type="search" name="q" value="{{ filters.q }}" placeholder="Brand, model, or keyword" maxlength="150"></label>
-        <label>Category<select name="category"><option value="">All categories</option>{% for value in catalog.categories %}<option {% if filters.category == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
-        {% for key, label in [('brand', 'Brand'), ('store', 'Retailer'), ('size', catalog.size_label), ('platform', 'Battery platform')] %}
-        {% if (key not in ['size', 'platform'] or result.facets[key] or filters[key]) and (key != 'platform' or catalog.formats) %}
-        <label>{{ label }}<select name="{{ key }}"><option value="">All {{ label|lower }}s</option>{% for value in result.facets[key] %}<option {% if filters[key] == value %}selected{% endif %}>{{ value }}</option>{% endfor %}{% if filters[key] and filters[key] not in result.facets[key] %}<option selected>{{ filters[key] }}</option>{% endif %}</select></label>
-        {% endif %}{% endfor %}
-        {% if catalog.formats %}<label>Package<select name="format"><option value="">All packages</option>{% for value in catalog.formats %}<option {% if filters.format == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>{% endif %}
-        <label>Retailer reference at least<select name="min_reference">{% for value in [0, 100, 200, 500, 1000, 2000, 5000] %}<option value="{{ value }}" {% if filters.min_reference == value %}selected{% endif %}>{{ value|money }}{% if value == 0 %} · any price{% endif %}</option>{% endfor %}{% if filters.min_reference not in [0,100,200,500,1000,2000,5000] %}<option value="{{ filters.min_reference }}" selected>{{ filters.min_reference|money }}</option>{% endif %}</select></label>
-        <label>My budget, up to ($)<input type="number" name="max_price" min="0" max="1000000" step="0.01" value="{{ filters.max_price or 0 }}"><small>0 means any price</small></label>
-        <label>Minimum discount (%)<input type="number" name="min_discount" value="{{ filters.min_discount|round(1) }}" min="0" max="100" step="0.1"></label>
-        <label class="check-label"><input type="checkbox" name="stock" value="true" {% if filters.stock %}checked{% endif %}>Reported in stock only</label>
-        <button type="submit" class="primary-button">Apply filters <span aria-hidden="true">→</span></button>
-        <a class="reset" href="/#deals">Reset filters</a>
-      </form>
-    </details>
-    <div class="results">
-      {% if active_filters %}<nav class="active-filters" aria-label="Applied filters">{% for item in active_filters %}<a href="{{ item.url }}" aria-label="Remove filter: {{ item.label }}">{{ item.label }} <span aria-hidden="true">×</span></a>{% endfor %}</nav>{% endif %}
-      <div class="results-bar"><p><strong>{{ result.total }}</strong> matching deals</p><p>Sorted by <strong>% off ↓</strong></p></div>
-      <div class="coverage"><span class="signal" aria-hidden="true"></span>{{ result.fresh_sources }} of {{ source_count }} sources with recent data · <a href="/sources">View coverage</a></div>
-      {% if filters.size %}<p class="filter-note">Showing reported in-stock variants in <strong>{{ filters.size }}</strong>. Prices below belong to that size.</p>{% endif %}
-      {% if result.cards %}
-      <div class="cards">
-        {% for product in result.cards %}{% set offer = product.offer %}
-        <article class="deal-card">
-          <div class="product-image"><span class="discount">−{{ offer.discount|round(1) }}<small>%</small></span>{% if offer.image_url %}<img src="{{ offer.image_url }}" alt="{{ product.name }}" loading="{{ 'eager' if loop.first else 'lazy' }}" width="400" height="320" referrerpolicy="no-referrer">{% else %}<span class="image-placeholder">{{ catalog.name }}<small>Image unavailable</small></span>{% endif %}<span class="product-category">{{ product.category }}</span></div>
-          <div class="card-body"><p class="product-brand">{{ product.brand }}</p><h3><a href="{{ offer.url }}" target="_blank" rel="noopener noreferrer">{{ product.name }}</a></h3>
-            <p class="variant">{% if offer.options %}{{ offer.options }}{% else %}Standard listing{% endif %}</p>
-            {% if product.format %}<div class="tags"><span>{% if product.format == 'Not specified' %}Package not specified{% else %}{{ product.format }}{% endif %}</span>{% if product.platform %}<span>{{ product.platform }}</span>{% endif %}</div>{% endif %}
-            <div class="prices"><strong>{{ offer.current_price|money }}</strong><span>USD</span></div>{% if offer.price_note %}<p class="reference price-note">{{ offer.price_note }}</p>{% endif %}<p class="reference"><s>{{ offer.original_price|money }}</s> retailer reference</p><p class="savings">Save {{ offer.savings|money }}</p>
-            <p class="stock">{% if offer.availability == 'in_stock' %}<span class="stock-dot"></span>Reported in stock{% else %}Stock unconfirmed · check retailer{% endif %}{% if offer.size %} · {{ offer.size }}{% endif %}</p>
-            {% if offer.availability_note %}<p class="stock">{{ offer.availability_note }}</p>{% endif %}
-            <a class="merchant" href="{{ offer.url }}" target="_blank" rel="noopener noreferrer">{{ product.store }} <span aria-hidden="true">↗</span></a><details class="offer-evidence"><summary>Price &amp; variant details</summary>
-              <p>{{ offer.discount|round(1) }}% off = ({{ offer.original_price|money }} − {{ offer.current_price|money }}) ÷ {{ offer.original_price|money }} × 100.</p>
-              <p>Reference: retailer compare-at price. Not a verified former selling price or all-time low.</p>
-              {% if offer.price_note %}<p class="price-note">{{ offer.price_note }}</p>{% endif %}
-              <p>Variant {{ offer.variant_key }} · {{ offer.options or 'Options not specified' }}. {{ product.matching_variants }} eligible variant{{ 's' if product.matching_variants != 1 else '' }}; this card shows the deepest discount that matches your filters.</p>
-              <p>Shipping and tax excluded. Price and stock may change at checkout.</p>
-              <a class="history-link" href="{{ product.history_url }}">View this variant’s observed prices →</a>
-            </details><p class="observed">Checked <time datetime="{{ product.observed_at }}">{{ product.observed_at|date }}</time></p>
-          </div>
-        </article>{% endfor %}
+<section class="world-hero-wrap">
+  <div class="world-hero">
+    <img class="world-hero-img" src="{{ url_for('brand', path=banner_img) }}" alt="" width="1536" height="960" fetchpriority="high" aria-hidden="true">
+    <div class="world-hero-scrim" aria-hidden="true"></div>
+    <div class="world-hero-copy">
+      <h1>{{ catalog.headline.replace('\n', ' ') }}</h1>
+      <p>{{ catalog.description }}</p>
+      <div class="coverage">
+        <span class="signal" aria-hidden="true"></span>
+        <span><strong>{{ result.fresh_sources }}</strong> of {{ source_count }} specialist dealers active · {{ freshness_hours }}h verified snapshot · <a href="/sources">Source report</a></span>
       </div>
-      {% else %}<div class="empty"><span aria-hidden="true">↗</span><h3>{% if result.fresh_sources %}No deals match this search.{% else %}Fresh deals are on their way.{% endif %}</h3><p>{% if result.fresh_sources %}Try a lower reference price or fewer filters. We only show discounted offers that meet your choices.{% else %}There is no recent, complete source snapshot to show. We hide offers after {{ freshness_hours }} hours rather than present an old price as current.{% endif %}</p><a href="{% if result.fresh_sources %}/#deals{% else %}/sources{% endif %}">{% if result.fresh_sources %}Reset filters{% else %}Check source health{% endif %} →</a></div>{% endif %}
-      {% if result.pages > 1 %}<nav class="pagination" aria-label="Deal pages">{% if result.page > 1 %}<a href="{{ previous }}">← Previous</a>{% endif %}<span>Page {{ result.page }} of {{ result.pages }}</span>{% if result.page < result.pages %}<a href="{{ next }}">Next →</a>{% endif %}</nav>{% endif %}
     </div>
   </div>
 </section>
-<section class="field-note"><span class="eyebrow">BEFORE YOU BUY</span><div><h2>A great discount starts with the right details.</h2><p>{{ catalog.buying_note }}</p><p>Percentage off compares the selected variant’s price with the retailer’s own reference price. It does not establish a historical selling price or an all-time low.</p></div></section>
+
+<section id="deals" class="deal-section">
+  <form action="/#deals" method="get" id="filters" class="command-console">
+    <div class="command-primary">
+      <label class="cmd-search">
+        <span>Search</span>
+        <div class="cmd-search-box">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
+          <input type="search" name="q" value="{{ filters.q }}" placeholder="Search brand, model, or keyword" maxlength="150">
+        </div>
+      </label>
+
+      <label>
+        <span>Category</span>
+        <select name="category">
+          <option value="">All categories</option>
+          {% for value in catalog.categories %}
+          <option {% if filters.category == value %}selected{% endif %}>{{ value }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      {% if catalog.formats %}
+      {% if result.facets['platform'] or filters['platform'] %}
+      <label>
+        <span>Battery platform</span>
+        <select name="platform">
+          <option value="">All battery platforms</option>
+          {% for value in result.facets['platform'] %}<option {% if filters['platform'] == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+          {% if filters['platform'] and filters['platform'] not in result.facets['platform'] %}<option selected>{{ filters['platform'] }}</option>{% endif %}
+        </select>
+      </label>
+      {% endif %}
+      {% elif result.facets['size'] or filters['size'] %}
+      <label>
+        <span>{{ catalog.size_label }}</span>
+        <select name="size">
+          <option value="">All {{ catalog.size_label|lower }}s</option>
+          {% for value in result.facets['size'] %}<option {% if filters['size'] == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+          {% if filters['size'] and filters['size'] not in result.facets['size'] %}<option selected>{{ filters['size'] }}</option>{% endif %}
+        </select>
+      </label>
+      {% endif %}
+
+      <label>
+        <span>Retailer reference at least</span>
+        <select name="min_reference">
+          {% for value in [0, 100, 200, 500, 1000, 2000, 5000] %}
+          <option value="{{ value }}" {% if filters.min_reference == value %}selected{% endif %}>{{ value|money }}{% if value == 0 %} · any price{% endif %}</option>
+          {% endfor %}
+          {% if filters.min_reference not in [0,100,200,500,1000,2000,5000] %}
+          <option value="{{ filters.min_reference }}" selected>{{ filters.min_reference|money }}</option>
+          {% endif %}
+        </select>
+      </label>
+
+      <button type="submit" class="primary-button">
+        <span>Find deals</span>
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3.5 8h9M8.5 4l4 4-4 4"/></svg>
+      </button>
+    </div>
+
+    <details class="filter-panel">
+      <summary><span>More filters &amp; budget</span><svg class="filter-chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
+      <div class="drawer-grid">
+        {% for key, label in [('brand', 'Brand'), ('store', 'Retailer')] %}
+        <label>{{ label }}<select name="{{ key }}"><option value="">All {{ label|lower }}s</option>{% for value in result.facets[key] %}<option {% if filters[key] == value %}selected{% endif %}>{{ value }}</option>{% endfor %}{% if filters[key] and filters[key] not in result.facets[key] %}<option selected>{{ filters[key] }}</option>{% endif %}</select></label>
+        {% endfor %}
+        {% if catalog.formats and (result.facets['size'] or filters['size']) %}
+        <label>{{ catalog.size_label }}<select name="size"><option value="">All {{ catalog.size_label|lower }}s</option>{% for value in result.facets['size'] %}<option {% if filters['size'] == value %}selected{% endif %}>{{ value }}</option>{% endfor %}{% if filters['size'] and filters['size'] not in result.facets['size'] %}<option selected>{{ filters['size'] }}</option>{% endif %}</select></label>
+        {% endif %}
+        {% if catalog.formats %}
+        <label>Package<select name="format"><option value="">All packages</option>{% for value in catalog.formats %}<option {% if filters.format == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
+        {% endif %}
+        <label>My budget, up to ($)<input type="number" name="max_price" min="0" max="1000000" step="0.01" value="{{ filters.max_price or 0 }}"><small>0 means any price</small></label>
+        <label>Minimum discount (%)<input type="number" name="min_discount" value="{{ filters.min_discount|round(1) }}" min="0" max="100" step="0.1"></label>
+        <label class="check-label"><input type="checkbox" name="stock" value="true" {% if filters.stock %}checked{% endif %}>Reported in stock only</label>
+        <div class="drawer-actions">
+          <a class="reset" href="/#deals">Reset filters</a>
+          <button type="submit" class="secondary-button">Apply</button>
+        </div>
+      </div>
+    </details>
+  </form>
+
+  <div class="saved-searches" id="saved-searches" aria-label="Saved searches"></div>
+  <p id="save-status" role="status" class="save-status"></p>
+
+  <div class="results">
+    <h2 class="sr-only">Matching clearance deals</h2>
+    {% if active_filters %}
+    <nav class="active-filters" aria-label="Applied filters">
+      {% for item in active_filters %}
+      <a href="{{ item.url }}" aria-label="Remove filter: {{ item.label }}">
+        <span>{{ item.label }}</span>
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>
+      </a>
+      {% endfor %}
+    </nav>
+    {% endif %}
+
+    <div class="results-bar">
+      <p><strong>{{ result.total }}</strong> matching deals · Ranked by <strong>deepest % off</strong></p>
+      <div class="results-actions">
+        <a class="quiet-link" href="/#deals">Reset</a>
+        <button type="button" id="save-search" class="quiet-button">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 2.5h8a1 1 0 0 1 1 1v10l-5-3-5 3v-10a1 1 0 0 1 1-1z"/></svg>
+          <span>Save search</span>
+        </button>
+      </div>
+    </div>
+
+    {% if filters.size %}<p class="filter-note">Showing reported in-stock variants in <strong>{{ filters.size }}</strong>. Prices below belong to that size.</p>{% endif %}
+
+    {% if result.cards %}
+    <div class="cards">
+      {% for product in result.cards %}{% set offer = product.offer %}
+      <article class="deal-card{% if offer.discount >= 50 %} deal-card--deep{% endif %}">
+        <a class="product-image" href="{{ offer.url }}" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-hidden="true">
+          <span class="discount">−{{ offer.discount|round(1) }}<small>%</small></span>
+          {% if offer.image_url %}
+          <img src="{{ offer.image_url }}" alt="" loading="{{ 'eager' if loop.first else 'lazy' }}" width="400" height="320" referrerpolicy="no-referrer">
+          {% else %}
+          <img class="world-fallback-art" src="{{ url_for('brand', path=banner_img) }}" alt="" loading="lazy" width="400" height="320">
+          {% endif %}
+          <span class="product-category">{{ product.category }}</span>
+        </a>
+        <div class="card-body">
+          <div class="card-eyebrow">
+            <span class="product-brand">{{ product.brand }}</span>
+            <span class="product-store">{{ product.store }}</span>
+          </div>
+          <h3><a href="{{ offer.url }}" target="_blank" rel="noopener noreferrer">{{ product.name }}</a></h3>
+          <p class="variant">{% if offer.options %}{{ offer.options }}{% else %}Standard listing{% endif %}</p>
+          {% if product.format %}<div class="tags"><span>{% if product.format == 'Not specified' %}Package not specified{% else %}{{ product.format }}{% endif %}</span>{% if product.platform %}<span>{{ product.platform }}</span>{% endif %}</div>{% endif %}
+
+          <div class="price-band">
+            <div class="prices">
+              <strong>{{ offer.current_price|money }}</strong>
+              <span>USD</span>
+              <span class="reference"><s>{{ offer.original_price|money }}</s> retailer reference</span>
+            </div>
+            <p class="savings">Save {{ offer.savings|money }}</p>
+            {% if offer.price_note %}<p class="price-note">{{ offer.price_note }}</p>{% endif %}
+          </div>
+
+          <p class="stock">{% if offer.availability == 'in_stock' %}<span class="stock-dot is-in"></span>Reported in stock{% else %}<span class="stock-dot"></span>Stock unconfirmed · check retailer{% endif %}{% if offer.size %} · <strong>{{ offer.size }}</strong>{% endif %}</p>
+          {% if offer.availability_note %}<p class="stock stock-extra">{{ offer.availability_note }}</p>{% endif %}
+
+          <a class="merchant" href="{{ offer.url }}" target="_blank" rel="noopener noreferrer">
+            <span>View offer at {{ product.store }}</span>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4.5 11.5 11.5 4.5M6 4.5h5.5V10"/></svg>
+          </a>
+
+          <details class="offer-evidence"><summary>Price &amp; variant details</summary>
+            <p>{{ offer.discount|round(1) }}% off = ({{ offer.original_price|money }} − {{ offer.current_price|money }}) ÷ {{ offer.original_price|money }} × 100.</p>
+            <p>Reference: retailer compare-at price. Not a verified former selling price or all-time low.</p>
+            {% if offer.price_note %}<p class="price-note">{{ offer.price_note }}</p>{% endif %}
+            <p>Variant {{ offer.variant_key }} · {{ offer.options or 'Options not specified' }}. {{ product.matching_variants }} eligible variant{{ 's' if product.matching_variants != 1 else '' }}; this card shows the deepest discount that matches your filters.</p>
+            <p>Shipping and tax excluded. Price and stock may change at checkout.</p>
+            <a class="history-link" href="{{ product.history_url }}">View observed price history</a>
+          </details>
+          <p class="observed">Checked <time datetime="{{ product.observed_at }}">{{ product.observed_at|date }}</time></p>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg>
+      <h3>{% if result.fresh_sources %}No deals match this search.{% else %}Fresh deals are on their way.{% endif %}</h3>
+      <p>{% if result.fresh_sources %}Try a lower reference price or fewer filters. We only show discounted offers that meet your choices.{% else %}There is no recent, complete source snapshot to show. We hide offers after {{ freshness_hours }} hours rather than present an old price as current.{% endif %}</p>
+      <a class="primary-button" href="{% if result.fresh_sources %}/#deals{% else %}/sources{% endif %}">{% if result.fresh_sources %}Reset filters{% else %}Check source health{% endif %}</a>
+    </div>
+    {% endif %}
+
+    {% if result.pages > 1 %}
+    <nav class="pagination" aria-label="Deal pages">
+      {% if result.page > 1 %}<a href="{{ previous }}">Previous</a>{% endif %}
+      <span>Page {{ result.page }} of {{ result.pages }}</span>
+      {% if result.page < result.pages %}<a href="{{ next }}">Next</a>{% endif %}
+    </nav>
+    {% endif %}
+  </div>
+</section>
+
+<section class="field-note">
+  <div><h2>A great discount starts with the right details.</h2></div>
+  <div>
+    <p>{{ catalog.buying_note }}</p>
+    <p>Percentage off compares the selected variant’s price with the retailer’s own reference price. It does not establish a historical selling price or an all-time&nbsp;low.</p>
+  </div>
+</section>
 {% endblock %}

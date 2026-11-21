@@ -198,6 +198,12 @@ if (form) {
     if (localStorage.getItem("fp-view") === "compact") toggle.click();
   } catch (_) {}
 }
+const siteHeader = document.querySelector(".site-header");
+if (siteHeader) {
+  const syncHeader = () => siteHeader.classList.toggle("is-scrolled", window.scrollY > 10);
+  window.addEventListener("scroll", syncHeader, { passive: true });
+  syncHeader();
+}
 document.addEventListener("click", async (event) => {
   const share = event.target.closest(".share-btn");
   if (share) {
@@ -209,6 +215,16 @@ document.addEventListener("click", async (event) => {
         });
       else {
         await navigator.clipboard.writeText(share.dataset.url);
+        const label = share.querySelector(".share-label");
+        if (label) {
+          const original = label.textContent;
+          share.classList.add("is-copied");
+          label.textContent = "Copied";
+          setTimeout(() => {
+            share.classList.remove("is-copied");
+            label.textContent = original;
+          }, 1800);
+        }
         showToast("Deal link copied.");
       }
     } catch (error) {

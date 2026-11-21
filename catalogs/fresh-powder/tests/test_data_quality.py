@@ -384,7 +384,7 @@ def test_filter_counts_exclude_stale_and_historical_rows(tmp_path):
         path = tmp_path / 'counts.db'
         await init_db(path)
         deals = _products_to_deals([Product('Atomic Skis','https://s.test/old',100,200,['170cm'],brand='Atomic')], 'Old')
-        deals[0].scraped_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=25)
+        deals[0].scraped_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=37)
         await upsert_deals(deals,path)
         assert await get_brands(path) == []
         assert await get_category_counts(path) == {}
@@ -502,3 +502,120 @@ def test_invisible_retailer_next_grid_url_is_followed():
         assert await _try_next_page(page,'button.show-more-observed-element[data-url]')
         assert page.destination.endswith('start=240&sz=240')
     asyncio.run(run())
+
+
+@pytest.mark.parametrize(('name', 'product_type', 'expected_reason'), [
+    ('Evo Ski Shop Gift Card', 'Skis', 'non-snow'),
+    ('Digital Gift Certificate', 'Snowboards', 'non-snow'),
+    ('Navidium Shipping Protection', 'Skis', 'non-snow'),
+    ('Route Package Protection', 'Snowboards', 'non-snow'),
+    ('Corso Green Shipping Protection', 'Bindings', 'non-snow'),
+    ('Extend 2-Year Protection Plan - Skis', 'Skis', 'non-snow'),
+    ('Ski Binding Mounting Service', 'Skis', 'non-snow'),
+    ('Full Ski Tune', 'Skis', 'non-snow'),
+    ('Snowboard Wax Service', 'Snowboards', 'non-snow'),
+    ('Season Ski Lease', 'Skis', 'non-snow'),
+    ('Yakima FatCat Evo 6 Ski & Snowboard Mount', 'Skis', 'non-snow'),
+    ('Atomic Bent 100 Skis - Open Box', 'Skis', 'condition'),
+    ('Burton Custom Snowboard Factory Second', 'Snowboards', 'condition'),
+    ('Salomon QST 98 Ex-Demo Skis', 'Skis', 'condition'),
+    ('Rossignol Experience 80 Ex-Rental Skis', 'Skis', 'condition'),
+    ('Bataleon Minishred Snowboard 2026', 'Snowboards', 'children'),
+    ('Burton Groms Snowboard Bindings', 'Bindings', 'children'),
+])
+def test_black_friday_junk_services_warranties_and_conditions_excluded(name, product_type, expected_reason):
+    assert exclusion_reason(name, 'https://shop.test/collections/skis/products/item', product_type) == expected_reason
+    assert _products_to_deals([Product(name, 'https://shop.test/item', 50, 100, product_type=product_type)], 'Test') == []
+
+
+@pytest.mark.parametrize(('name', 'product_type', 'expected'), [
+    ('Smith Squad MAG ChromaPop Replacement Goggle Lens', 'Goggles', 'accessories'),
+    ('Oakley Line Miner L Spare Lens', 'Goggles', 'accessories'),
+    ('Oakley Prizm Torch Goggle Lens', 'Goggles', 'accessories'),
+    ('Smith Squad XL ChromaPop Sun Black', 'Goggle Lenses', 'accessories'),
+    ('Gogglesoc Pro Goggle Cover', 'Goggles', 'accessories'),
+    ('Anon M4 Goggles + Spare Lens', 'Goggles', 'goggles'),
+    ('Marker Griffon 13 Ski Brake 100mm', 'Ski Bindings', 'accessories'),
+    ('Tyrolia Powerrail Ski Binding Brake', 'Bindings', 'accessories'),
+    ('Spark R&D Canted Splitboard Pucks', 'Snowboard Bindings', 'accessories'),
+    ('Voile Splitboard Pucks', 'Snowboards', 'accessories'),
+    ('Burton Snowboard Binding Toe Strap', 'Snowboard Bindings', 'accessories'),
+    ('Union Ankle Strap Kit', 'Bindings', 'accessories'),
+    ('Burton 4x4 Channel Mounting Disc', 'Bindings', 'accessories'),
+    ('G3 Alpinist+ Universal Ski Touring Skins', 'Skis', 'accessories'),
+    ('Pomoca Free Pro 2.0 Ready2Climb Skins', 'Skis', 'accessories'),
+    ('Fischer Twin Skin Pro Cross Country Skis', 'Skis', 'skis'),
+    ('Therm-ic Ski Boot Warmer', 'Ski Boots', 'accessories'),
+    ('Hotronic FootWarmer S4 Boot Heater', 'Ski Boots', 'accessories'),
+    ('Lange Ski Boot Replacement Buckle', 'Ski Boots', 'accessories'),
+    ('Atomic Hawx GripWalk Sole Pads', 'Ski Boots', 'accessories'),
+    ('Lange RX 120 4-Buckle Ski Boots', 'Ski Boots', 'ski boots'),
+    ('Swix Universal Ski Wax', 'Skis', 'accessories'),
+    ('Toko T8 Ski Waxing Iron', 'Skis', 'accessories'),
+    ('Dakine Super Tune Ski Tuning Kit', 'Skis', 'accessories'),
+    ('Swix Plexi Ski Scraper 5mm', 'Skis', 'accessories'),
+    ('Wintersteiger Ski Vise', 'Skis', 'accessories'),
+    ('Dakine Padded Ski Sleeve', 'Skis', 'accessories'),
+    ('Gravity Grabber Ski Wall Rack', 'Skis', 'accessories'),
+])
+def test_parts_lenses_skins_wax_and_boot_warmers_do_not_leak_into_equipment(name, product_type, expected):
+    assert categorize(name, '/collections/skis/products/item', product_type) == expected
+
+
+@pytest.mark.parametrize(('title', 'expected'), [
+    ('Atomic Bent 100 Skis 2025', 2025),
+    ('Blizzard Anomaly 88 Skis 2025/2026', 2026),
+    ('Blizzard Anomaly 88 Skis 2025/26', 2026),
+    ('Rossignol Sender Soul 102 2024-25', 2025),
+    ('Moment Wildcat Tour 118 25/26', 2026),
+    ('Salomon QST Blank 24/25', 2025),
+    ('Burton Custom Camber Snowboard 25-26', 2026),
+    ("K2 Mindbender 99Ti Skis '25", 2025),
+    ('Burton Custom Snowboard ’26', 2026),
+    ('Legacy Skis 00 - 01', 2001),
+    ('Armada AR One 130 MV Ski Boot 26/26.5', None),
+    ('Full Tilt Ski Boots 27.5', None),
+    ('Sidecut 128-98-118 Skis', None),
+    ('Marker Griffon 13 Bindings DIN 4-13', None),
+    ('Marker Race 16-17mm Piston Plate', None),
+    ('50/50 Park Skis', None),
+    ('Lange World Cup RS ZSoft 22', None),
+])
+def test_model_year_parses_season_formats_without_misparsing_dimensions(title, expected):
+    from aggregator.models import model_year
+    assert model_year(title) == expected
+
+
+def test_snow_wide_lengths_placeholder_msrp_and_addon_variants(tmp_path):
+    from datetime import datetime
+
+    from aggregator.db import init_db, query_deals, upsert_deals
+    from aggregator.sizes import matches_length
+    from deal_common.offers import VariantOffer
+
+    for token in ('156W', '156W cm', '156cm W', '160cm Wide', '153 WIDE'):
+        assert matches_length(token, 150, 162) is True
+    assert matches_length('156W cm', 157, 165) is False
+
+    # Placeholder $99,999 MSRP and $15 add-on variants cannot enter or rank in Fresh Powder.
+    placeholder = Product('Atomic Bent 100 Skis 2026', 'https://s.test/placeholder', 5500, 99999)
+    assert _products_to_deals([placeholder], 'Test') == []
+
+    ski_with_addon = Product(
+        'Atomic Bent 100 Skis 2026', 'https://s.test/bent', 15, 30, product_type='Skis',
+        offers=[
+            VariantOffer('addon', 'https://s.test/bent?variant=addon', 15, 30, options='Ski Binding Mounting Service', availability='in_stock'),
+            VariantOffer('strap', 'https://s.test/bent?variant=strap', 12, 25, options='Ski Strap', availability='in_stock'),
+            VariantOffer('172', 'https://s.test/bent?variant=172', 499, 799, size='172cm', options='172cm', availability='in_stock'),
+        ],
+    )
+    deals = _products_to_deals([ski_with_addon], 'Test')
+    assert len(deals) == 1
+    assert (deals[0].current_price, deals[0].original_price, deals[0].sizes) == (499, 799, '172cm')
+
+    path = tmp_path / 'snow-guard.db'
+    asyncio.run(init_db(path))
+    deals[0].scraped_at = datetime.now(UTC).replace(tzinfo=None)
+    asyncio.run(upsert_deals(deals, path))
+    selected = asyncio.run(query_deals(db_path=path, size='172 cm'))
+    assert len(selected) == 1 and selected[0].variant_key == '172'

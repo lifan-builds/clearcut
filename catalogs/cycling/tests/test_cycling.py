@@ -183,3 +183,99 @@ def test_normalization_and_query_preserve_exact_offers():
     assert selected["offer"]["availability"] == "in_stock"
     assert query([source], {**filters, "size": "XL"})["total"] == 0
     assert query([source], {**filters, "category": "", "size": ""})["total"] == 2
+
+
+@pytest.mark.parametrize(("name", "kind"), [
+    ("Incycle Gift Card", "Bikes"),
+    ("E-Gift Certificate", "Road Bikes"),
+    ("Navidium Shipping Protection", "Bikes"),
+    ("Route Package Protection", "Mountain Bikes"),
+    ("Extend 3-Year Protection Plan", "Electric Bikes"),
+    ("Professional Bike Assembly Fee", "Bikes"),
+    ("Custom Bike Build Fee", "Road Bikes"),
+    ("Reservation Deposit - Carbon Road Bike", "Road Bikes"),
+    ("Specialized Crash Replacement Frameset", "Framesets"),
+    ("RideWrap Tailored Protection Mountain Bike Frame Kit", "Mountain Bikes"),
+    ("RideWrap Covered Road Frameset Protection Kit", "Framesets"),
+    ("invisiFRAME Santa Cruz Bronson Frame Protection", "Mountain Frame"),
+    ("All Mountain Style Honeycomb Frame Guard", "Mountain Bikes"),
+    ("Race Face Tailgate Pad", "Mountain Bikes"),
+    ("SRAM UDH Universal Derailleur Hanger", "Mountain Bikes"),
+    ("Wheels Mfg Dropout Hanger #312", "Bicycles"),
+    ("Robert Axle Project 12mm Thru-Axle", "Road Bikes"),
+    ("Fox Rear Shock Mount Hardware Kit", "Mountain Bikes"),
+    ("Fox 38 Factory Grip2 Suspension Fork", "Mountain Bikes"),
+    ("RockShox Super Deluxe Ultimate Rear Shock", "Mountain Bikes"),
+    ("Zipp 303 Firecrest Carbon Road Wheelset", "Road Bikes"),
+    ("Shimano Ultegra Di2 12-Speed Groupset", "Road Bikes"),
+    ("SRAM Force AXS Crankset", "Road Bikes"),
+    ("SRAM XG-1295 Eagle 12-Speed Cassette", "Mountain Bikes"),
+    ("Fox Transfer Factory Dropper Post", "Mountain Bikes"),
+    ("Wahoo KICKR CORE Smart Bike Trainer", "Road Bikes"),
+    ("Park Tool PCS-10.3 Home Mechanic Repair Stand", "Bikes"),
+    ("Thule T2 Pro XTR Hitch Bike Rack", "Bikes"),
+    ("Apidura Expedition Frame Bag", "Gravel Bikes"),
+    ("Bafang 750W Mid-Drive E-Bike Conversion Kit", "Electric Bikes"),
+    ("Bosch PowerTube 750 E-Bike Replacement Battery", "Electric Bikes"),
+    ("Specialized SL Range Extender Battery", "Electric Bikes"),
+    ("Shimano Steps Battery Charger", "Electric Bikes"),
+    ("Strider 12 Sport Balance Bike", "Bikes"),
+    ("Woom 3 16\" Bike", "Bikes"),
+    ("Prevelo Alpha Two 16 inch Bike", "Bikes"),
+    ("Trek Precaliber 20 Mountain Bike", "Mountain Bikes"),
+    ("Specialized Riprock 24 Mountain Bike", "Mountain Bikes"),
+    ('12" Coaster Bike', "Bicycles"),
+    ('14" Sidewalk Bike', "Bicycles"),
+    ('16" Mountain Bike', "Mountain Bikes"),
+    ('20" Mountain Bike', "Mountain Bikes"),
+    ('24" Trail Bike', "Mountain Bikes"),
+    ('Mountain Bike 20" Wheel', "Mountain Bikes"),
+    ("Sun Classic 24\" Unicycle", "Bicycles"),
+    (" Schwinn Meridian Adult Tricycle", "Bicycles"),
+    ("Burley Bee Double Child Bike Trailer", "Bikes"),
+])
+def test_non_bike_junk_frame_protection_parts_kids_and_ebike_kits_excluded(name, kind):
+    assert classify(Product(name, "https://example.com/products/item", 500, 1000, product_type=kind)) is None
+
+
+@pytest.mark.parametrize(("name", "kind", "expected"), [
+    ("Salsa Fargo Apex 1 Drop Bar Mountain Bike", "Mountain Bikes", "Mountain bikes"),
+    ("2025 Scott Genius Frame & Fork", "Mountain Frame", "Framesets"),
+    ("Mountain Bike with Frame Protection", "Mountain Bikes", "Mountain bikes"),
+    ("12-Speed Carbon Road Bike", "Road Bikes", "Road bikes"),
+])
+def test_legitimate_bikes_and_framesets_survive_part_and_wheel_guards(name, kind, expected):
+    assert classify(Product(name, "https://example.com/products/bike", 1800, 3200, product_type=kind)).category == expected
+
+
+@pytest.mark.parametrize(("raw_brand", "canonical"), [
+    ("Cervélo", "Cervelo"),
+    ("Cervélo Bikes", "Cervelo"),
+    ("Trek Bicycle", "Trek"),
+    ("Cannondale Bicycles", "Cannondale"),
+    ("Giant Bicycles", "Giant"),
+    ("Canyon Bicycles", "Canyon"),
+    ("Yeti Cycles", "Yeti"),
+    ("Evil Bike Co.", "Evil"),
+    ("Norco Bicycles", "Norco"),
+    ("Kona Bicycle Co.", "Kona"),
+    ("Marin Bikes", "Marin"),
+    ("Bianchi Bicycles", "Bianchi"),
+    ("Rocky Mountain Bicycles", "Rocky Mountain"),
+    ("Salsa Cycles", "Salsa"),
+    ("Surly Bikes", "Surly"),
+    ("Juliana Bicycles", "Juliana"),
+    ("Revel Bikes", "Revel"),
+    ("Forbidden Bike Co.", "Forbidden"),
+    ("Allied Cycle Works", "Allied"),
+    ("Factor Bikes", "Factor"),
+    ("Ridley Bikes", "Ridley"),
+    ("Wilier Triestina", "Wilier"),
+])
+def test_cycling_brand_aliases_normalize_diacritics_and_vendor_suffixes(raw_brand, canonical):
+    url = "https://example.com/products/bike"
+    bike = Product(
+        "Carbon Road Bike", url, 2500, 4000, product_type="Road Bikes", brand=raw_brand,
+        offers=[VariantOffer("1", f"{url}?variant=1", 2500, 4000, size="54cm", availability="in_stock")],
+    )
+    assert normalize([bike], CATALOG, "example.com")[0]["brand"] == canonical

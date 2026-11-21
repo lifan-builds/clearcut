@@ -409,7 +409,7 @@ CATEGORY_RULES: list[tuple[str, list[str]]] = [
     ("poles", ["ski pole", "ski poles", "pole", "poles"]),
     ("helmets", ["helmet", "helmets", " mips"]),
     ("goggles", ["goggle", "goggles", " otg ", "bonus lens", " mag ", "chromapop",
-                 "replacement lens", "flight deck", "flight path",
+                 "flight deck", "flight path",
                  "flight tracker", "line miner", "zonula"]),
     ("pants", ["pant", "pants", "bibs", "bib", "bottom "]),
     ("jackets", ["jacket", "jackets", "shell", "parka", "anorak", "insulated jacket",
@@ -839,16 +839,18 @@ EXCLUDE_KEYWORDS: list[str] = [
     "abbott ", "ornament", "advent calendar", "doormat", "gnome",
     "christmas sign", "throw ",
     # Electronics / misc
-    "earbuds", "usb-c cable", "gift card",
+    "earbuds", "usb-c cable", "gift card", "gift certificate", "gift voucher", "store credit",
     "insole", "insoles", "sticker pack", "decal",
-    "free returns", "package protection",
+    "free returns", "package protection", "shipping protection", "order protection",
+    "navidium", "route protection", "corso ", "extend protection",
+    "extended warranty", "protection plan",
     # Other sports
     "soccer", "basketball", "football", "baseball", "tennis ball",
     "fishing rod", "fishing reel", "kneeboard",
     # Sunscreen
     "sunscreen", "spf30", "spf50",
     # Car racks
-    "thule ", "wheel carrier",
+    "thule ", "yakima ", "kuat ", "wheel carrier",
     # Baby/infant
     "baby supporter", "thule baby", "baby synchilla", "bunting suit", "infants'",
     # Non-snow brand-specific products

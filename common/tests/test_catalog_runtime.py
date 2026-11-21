@@ -89,7 +89,7 @@ def test_percent_wins_over_savings_and_image_then_page_is_stable():
 
 
 def test_stale_future_and_unknown_stock():
-    for timestamp in (NOW - timedelta(hours=25), NOW + timedelta(minutes=1)):
+    for timestamp in (NOW - timedelta(hours=37), NOW + timedelta(minutes=1)):
         assert query([source([product()], timestamp)], filters(), now=NOW)["total"] == 0
     row = source([product(offers=[offer(stock="unknown")])])
     assert query([row], filters(), now=NOW)["total"] == 1
@@ -346,7 +346,7 @@ def test_size_facets_use_one_stable_existing_label_per_match_key():
             {**source([product("Second", [offer(f"b-{i}", size=label)
                                           for i, label in enumerate(labels[9:])])]), "name": "Other"}]
     rows.append(source([product("Unknown", [offer("unknown", size="XL", stock="unknown")])]))
-    rows.append(source([product("Stale", [offer("stale", size="XXL")])], NOW - timedelta(hours=25)))
+    rows.append(source([product("Stale", [offer("stale", size="XXL")])], NOW - timedelta(hours=37)))
     rows.append(source([product("Future", [offer("future", size="XXXL")])], NOW + timedelta(seconds=1)))
     result = query(rows, filters(), now=NOW)
     sizes = result["facets"]["size"]
@@ -460,3 +460,156 @@ def test_size_facet_representatives_are_existing_labels_not_invented_canonical_v
     assert query(rows, filters(), now=NOW)["facets"]["size"] == expected
     rows[0]["products"][0]["offers"].reverse()
     assert query(rows, filters(), now=NOW)["facets"]["size"] == expected
+
+
+def test_bogus_penny_deposit_placeholder_msrp_and_100x_unit_mismatch_rejected():
+    parser = ShopifyParser(size_option_names=CYCLING.size_option_names,
+                           size_value_pattern=CYCLING.size_value_pattern)
+    raw = {"products": [{
+        "title": "Carbon Gravel Bike", "handle": "gravel-bike", "product_type": "Gravel Bikes",
+        "options": [{"name": "Size"}],
+        "variants": [
+            {"id": 1, "available": True, "price": "0.01", "compare_at_price": "2500.00", "option1": "S"},
+            {"id": 2, "available": True, "price": "0.99", "compare_at_price": "50.00", "option1": "S"},
+            {"id": 3, "available": True, "price": "1.00", "compare_at_price": "2500.00", "option1": "M"},
+            {"id": 4, "available": True, "price": "2499.00", "compare_at_price": "249900.00", "option1": "M"},
+            {"id": 5, "available": True, "price": "4500.00", "compare_at_price": "99999.00", "option1": "L"},
+            {"id": 6, "available": True, "price": "25.00", "compare_at_price": "2500.00", "option1": "L"},
+            {"id": 7, "available": True, "price": "1500.00", "compare_at_price": "2500.00", "option1": "XL"},
+        ],
+    }]}
+    parsed = parser.parse_listing_page(json.dumps(raw), "https://example.com/collections/bikes?currency=USD")
+    assert [o.variant_key for o in parsed[0].offers] == ["7"]
+    assert parsed[0].current_price == 1500
+
+    # Also enforce in normalize() and query() for pre-existing snapshots.
+    mixed = Product("Carbon Gravel Bike", "https://example.com/products/gravel-bike", 1, 2500,
+                    product_type="Gravel Bikes", offers=[
+                        VariantOffer("penny", "https://example.com/products/gravel-bike?variant=penny", 0.50, 2500, size="S", availability="in_stock"),
+                        VariantOffer("placeholder", "https://example.com/products/gravel-bike?variant=placeholder", 5000, 99999, size="M", availability="in_stock"),
+                        VariantOffer("cents", "https://example.com/products/gravel-bike?variant=cents", 250, 25000, size="L", availability="in_stock"),
+                        VariantOffer("valid", "https://example.com/products/gravel-bike?variant=valid", 200, 2000, size="XL", availability="in_stock"),
+                    ])
+    normalized = normalize([mixed], CYCLING, "example.com")
+    assert [o["variant_key"] for o in normalized[0]["offers"]] == ["valid"]
+
+    legacy_rows = [source([product("Legacy", [
+        offer("penny", 0.50, 2000, "S"),
+        offer("placeholder", 5000, 99999, "M"),
+        offer("cents", 25, 2500, "L"),
+        offer("valid-90", 200, 2000, "XL"),
+    ])])]
+    res = query(legacy_rows, filters(), now=NOW)
+    assert res["total"] == 1
+    assert res["cards"][0]["offer"]["variant_key"] == "valid-90"
+    assert res["facets"]["size"] == ["XL"]
+
+
+def test_multi_variant_addon_warranty_gift_wrap_and_small_part_variants_rejected():
+    parser = ShopifyParser(size_option_names=CYCLING.size_option_names,
+                           size_value_pattern=CYCLING.size_value_pattern)
+    # Case 1: Discounted bike alongside higher-percentage warranty/gift-wrap/deposit/small-part variants.
+    on_sale_bike = {
+        "title": "Enduro Carbon Mountain Bike", "handle": "enduro-bike", "product_type": "Mountain Bikes",
+        "options": [{"name": "Option"}],
+        "variants": [
+            {"id": 10, "available": True, "price": "15.00", "compare_at_price": "30.00", "option1": "Gift Wrap"},
+            {"id": 11, "available": True, "price": "49.00", "compare_at_price": "149.00", "option1": "Extend 3-Year Protection Plan"},
+            {"id": 12, "available": True, "price": "99.00", "compare_at_price": "199.00", "option1": "Reservation Deposit"},
+            {"id": 13, "available": True, "price": "19.99", "compare_at_price": "39.99", "option1": "Spare Hardware Bolt"},
+            {"id": 14, "available": True, "price": "2800.00", "compare_at_price": "4000.00", "option1": "MD"},
+        ],
+    }
+    # Case 2: Full-price $3,000 bike whose ONLY discounted variant is a $15 (was $25) add-on part.
+    full_price_with_addon = {
+        "title": "Full Price Road Bike", "handle": "road-bike", "product_type": "Road Bikes",
+        "options": [{"name": "Size"}],
+        "variants": [
+            {"id": 20, "available": True, "price": "3000.00", "compare_at_price": None, "option1": "54cm"},
+            {"id": 21, "available": True, "price": "15.00", "compare_at_price": "25.00", "option1": "Touch-Up Paint"},
+            {"id": 22, "available": True, "price": "18.00", "compare_at_price": "30.00", "option1": "Small Part"},
+        ],
+    }
+    # Case 3: Variant explicitly stating "No Extended Warranty" on a real bike remains valid.
+    negated_warranty = {
+        "title": "Gravel Bike", "handle": "gravel", "product_type": "Gravel Bikes",
+        "options": [{"name": "Size"}, {"name": "Coverage"}],
+        "variants": [
+            {"id": 30, "available": True, "price": "1800.00", "compare_at_price": "3000.00",
+             "option1": "56cm", "option2": "No Extended Warranty"},
+        ],
+    }
+    parsed = parser.parse_listing_page(
+        json.dumps({"products": [on_sale_bike, full_price_with_addon, negated_warranty]}),
+        "https://example.com/collections/bikes?currency=USD",
+    )
+    assert [(p.name, [o.variant_key for o in p.offers]) for p in parsed] == [
+        ("Enduro Carbon Mountain Bike", ["14"]),
+        ("Gravel Bike", ["30"]),
+    ]
+
+
+@pytest.mark.parametrize(("a", "b", "same"), [
+    ("172cm", "172 cm", True),
+    ("172cm", "172", True),
+    ("156W", "156W cm", True),
+    ("156W", "156 Wide", True),
+    ("156W", "156cm Wide", True),
+    ("156W", "156", False),
+    ("26.5", "26.5 MP", True),
+    ("26.5", "26.5 Mondo", True),
+    ("26.5", "26.5 Mondopoint", True),
+    ("26.5", "Mondo 26.5", True),
+    ("54cm", "54", True),
+    ("50s", "50", False),
+    ("S3", "s3", True),
+    ("XX-Large", "XXL", True),
+    ("X-Small", "XS", True),
+    ("MD/LG", "MD", False),
+    ("MD/LG", "LG", False),
+    ("S/M", "S", False),
+])
+def test_size_key_normalizes_ski_mondo_and_frame_sizes_without_splitting_compounds(a, b, same):
+    assert (size_key(a) == size_key(b)) is same
+
+
+def test_shopify_preorder_and_backorder_signals_prevent_false_instock_and_match_audit():
+    from deal_common.catalog.audit import validate_product
+
+    parser = ShopifyParser()
+    raw_item = {
+        "title": "2026 All-Mountain Skis", "handle": "skis", "product_type": "Skis",
+        "options": [{"name": "Mondo"}, {"name": "Status"}],
+        "variants": [
+            {"id": 101, "available": True, "price": "399.00", "compare_at_price": "699.00",
+             "option1": "26.5", "option2": "Pre-Order"},
+            {"id": 102, "available": True, "price": "449.00", "compare_at_price": "699.00",
+             "option1": "27.5", "option2": "Ready to Ship"},
+        ],
+    }
+    product_parsed = parser.parse_listing_page(
+        json.dumps({"products": [raw_item]}), "https://shop.example/collections/sale?currency=USD"
+    )[0]
+    preorder, ready = product_parsed.offers
+    assert preorder.size == "26.5" and preorder.availability == "unknown" and "pre-order" in preorder.availability_note
+    assert ready.size == "27.5" and ready.availability == "in_stock" and ready.availability_note == ""
+
+    # Independent audit endpoint check agrees that pre-order variant is not immediate stock.
+    endpoint = {
+        "title": raw_item["title"],
+        "options": raw_item["options"],
+        "variants": [
+            {"id": 101, "available": True, "price": 39900, "compare_at_price": 69900, "options": ["26.5", "Pre-Order"]},
+            {"id": 102, "available": True, "price": 44900, "compare_at_price": 69900, "options": ["27.5", "Ready to Ship"]},
+        ],
+    }
+    preorder_card = {"name": product_parsed.name, "currency": "USD", "offer": {
+        "variant_key": "101", "url": preorder.url, "current_price": 399.0, "original_price": 699.0,
+        "options": "26.5 / Pre-Order",
+    }}
+    assert validate_product(preorder_card, endpoint, "USD")["checks"]["stock"] is False
+    ready_card = {**preorder_card, "offer": {
+        "variant_key": "102", "url": ready.url, "current_price": 449.0, "original_price": 699.0,
+        "options": "27.5 / Ready to Ship",
+    }}
+    assert validate_product(ready_card, endpoint, "USD")["status"] == "match"

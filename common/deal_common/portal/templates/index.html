@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clearcut · Specialist gear clearance across Snow, Cycling &amp; Tools</title>
+  <meta name="description" content="Choose your terrain: Clearcut indexes deep percentage markdowns across FreshPowder (Snow), Big Ring (Cycling), and Bench Drop (Tools)—ranked strictly by unrounded % off.">
+  <meta property="og:title" content="Clearcut · Specialist gear clearance across Snow, Cycling &amp; Tools">
+  <meta property="og:description" content="Three specialist clearance worlds across 62 independent and specialty shops, ranked strictly by real percentage off.">
+  <meta property="og:type" content="website">
+  {% if public_url %}<link rel="canonical" href="{{ public_url }}/"><meta property="og:url" content="{{ public_url }}/">{% endif %}
+  <meta name="theme-color" content="#0d1721">
+  <link rel="stylesheet" href="{{ url_for('portal_static', path='portal.css') }}?v=2">
+  <script src="{{ url_for('portal_static', path='portal.js') }}?v=2" defer></script>
+</head>
+<body id="top" data-active-world="{{ selected_slug }}">
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="edition-header">
+    <div class="shell edition-bar">
+      <a class="brand-lockup" href="/" aria-label="Clearcut home">
+        <span class="brand-emblem" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15 15 4M9 4h6v6M4 9l7 7"/></svg>
+        </span>
+        <span class="brand-name">Clearcut</span>
+      </a>
+
+      <nav class="world-dock" aria-label="Jump to specialist world">
+        {% for desk in desks %}{% set cat = desk.catalog %}
+        <a class="dock-pill" href="{{ cat.url }}/" data-world-target="{{ cat.slug }}">
+          <span class="dock-num">{{ cat.chapter }}</span>
+          <span>{{ cat.name }}</span>
+        </a>
+        {% endfor %}
+      </nav>
+
+      <div class="header-telemetry">
+        <span class="pulse-dot" aria-hidden="true"></span>
+        <span>{{ total_sources }} shops · 24h verified</span>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="gallery-stage" aria-labelledby="stage-heading">
+      <div class="shell stage-masthead">
+        <div class="masthead-copy">
+          <h1 id="stage-heading">Choose your terrain.</h1>
+          <p>Deep specialist clearance across snow, cycling, and workshop machinery—ranked strictly by unrounded percentage off and bound to the exact variant in&nbsp;stock.</p>
+        </div>
+
+        <div class="reel-controls" aria-label="Gallery navigation">
+          <span class="reel-counter" id="reel-counter" aria-live="polite">01 / 03</span>
+          <div class="reel-progress" aria-hidden="true"><span id="reel-progress-bar"></span></div>
+          <button type="button" class="reel-arrow" id="reel-prev" aria-label="Previous world">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12.5 8h-9M7.5 4l-4 4 4 4"/></svg>
+          </button>
+          <button type="button" class="reel-arrow" id="reel-next" aria-label="Next world">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3.5 8h9M8.5 4l4 4-4 4"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="worlds-reel" id="worlds-reel" tabindex="0" role="region" aria-label="Three specialist gear worlds—scroll horizontally or use arrow keys">
+        {% for desk in desks %}{% set cat = desk.catalog %}{% set summary = desk.summary %}
+        <article class="world-monolith world--{{ cat.slug }}{% if loop.first %} is-active{% endif %}" data-world="{{ cat.slug }}" data-index="{{ loop.index }}">
+          <img class="world-plate" src="{{ url_for('portal_static', path='img/' ~ cat.image_name) }}" alt="{{ cat.name }} — {{ cat.domain_label }}" width="900" height="1350" loading="{{ 'eager' if loop.first else 'lazy' }}">
+          <div class="world-scrim" aria-hidden="true"></div>
+
+          <div class="world-top">
+            <span class="world-index">{{ cat.chapter }} · {{ cat.domain_label }}</span>
+            <span class="world-floor">{{ cat.floor_note }}</span>
+          </div>
+
+          <div class="world-content">
+            <h2 class="world-title"><a class="world-cover-link" href="{{ cat.url }}/">{{ cat.name }}</a></h2>
+            <p class="world-headline">{{ cat.headline }}</p>
+            <p class="world-desc">{{ cat.description }}</p>
+
+            {% if summary and summary.highlights %}{% set lead = summary.highlights[0] %}
+            <div class="world-live-strip">
+              <span class="live-cut">−{{ lead.discount_pct|round(0)|int }}%</span>
+              <span class="live-item">{{ lead.name }}</span>
+              <span class="live-price">{{ lead.current_price|portal_money(lead.currency) }}</span>
+            </div>
+            {% endif %}
+
+            <div class="world-footer">
+              <div class="world-tags">
+                {% for item in desk.category_links[:3] %}
+                <a class="world-tag" href="{{ item.url }}">{{ item.label }}</a>
+                {% endfor %}
+              </div>
+              <a class="world-enter" href="{{ cat.url }}/">
+                <span>Enter {{ cat.name }}</span>
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3.5 8h9M8.5 4l4 4-4 4"/></svg>
+              </a>
+            </div>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="manifesto-strip shell" id="methodology" aria-labelledby="manifesto-heading">
+      <div class="manifesto-head">
+        <h2 id="manifesto-heading">One verification standard across every terrain.</h2>
+        <p>Every Clearcut index serves validated read-only SQLite snapshots—never scraped live on your click, and never reordered by commission.</p>
+      </div>
+      <div class="manifesto-columns">
+        <div>
+          <h3>Unrounded % off first</h3>
+          <p>Markdowns rank strictly by exact decimal percentage off before display rounding. A 39.98% discount never clears a 40% filter.</p>
+        </div>
+        <div>
+          <h3>Single-variant binding</h3>
+          <p>Sale price, retailer compare-at reference, size or package, stock report, and purchase URL belong to the same purchasable&nbsp;variant.</p>
+        </div>
+        <div>
+          <h3>24-hour freshness ceiling</h3>
+          <p>Failed scrapes never renew old timestamps, and stale sources leave browsing after 24 hours rather than masquerading as&nbsp;current.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="edition-footer">
+    <div class="shell footer-row">
+      <div class="footer-left">
+        <a class="brand-lockup" href="/">
+          <span class="brand-name">Clearcut</span>
+        </a>
+        <p>Multi-catalog specialist deal engine by <a href="https://clifan.com/">Lifan Chen</a>. Retailer references are compare-at prices, not verified former selling&nbsp;prices.</p>
+      </div>
+      <nav class="footer-links" aria-label="Clearcut network">
+        {% for desk in desks %}
+        <a href="{{ desk.catalog.url }}/">{{ desk.catalog.name }}</a>
+        {% endfor %}
+        <a href="https://clifan.com/clearcut/">Architecture</a>
+        <a href="https://github.com/lifan-builds/clearcut">GitHub</a>
+        <a class="back-top" href="#top">Top<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M8 12.5v-9M4.5 7 8 3.5 11.5 7"/></svg></a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

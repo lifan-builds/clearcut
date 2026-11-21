@@ -1,0 +1,41 @@
+{
+  "name": "Clearcut Editions",
+  "fonts": {
+    "display": "Instrument Serif",
+    "sans": "Manrope"
+  },
+  "editions": {
+    "portal": {
+      "ground": "#ecf2f8",
+      "surface": "#ffffff",
+      "ink": "#0d1a26",
+      "accent": "#c83a1e"
+    },
+    "snow": {
+      "ground": "#ecf2f8",
+      "surface": "#ffffff",
+      "ink": "#0b1b2b",
+      "accent": "#0f52b3",
+      "deepCut": "#cf3619"
+    },
+    "cycling": {
+      "ground": "#eff3ec",
+      "surface": "#ffffff",
+      "ink": "#0e241b",
+      "accent": "#cef255"
+    },
+    "tools": {
+      "ground": "#eceff2",
+      "surface": "#ffffff",
+      "ink": "#17191c",
+      "accent": "#ffad42"
+    }
+  },
+  "radii": {
+    "stage": "24px",
+    "card": "20px",
+    "control": "11px",
+    "pill": "999px"
+  },
+  "easing": "cubic-bezier(0.22, 1, 0.36, 1)"
+}

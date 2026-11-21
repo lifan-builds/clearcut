@@ -7,7 +7,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from bs4 import BeautifulSoup
 
 from deal_common.models import Product
-from deal_common.offers import VariantOffer
+from deal_common.offers import VariantOffer, plausible_offer
 from deal_common.parsers.base import BaseParser
 from deal_common.parsers.common import parse_price
 
@@ -160,7 +160,7 @@ class TaylorParser(BaseParser):
                 raise ValueError('Malformed Taylor price/stock') from None
             if not all(map(math.isfinite, (price, reference, stock))):
                 raise ValueError('Nonfinite Taylor price/stock')
-            if (not 0 < price < reference or stock <= 0 or row.get('available') is not True
+            if (not plausible_offer(price, reference) or stock <= 0 or row.get('available') is not True
                     or row.get('ib') is not False or row.get('level_name') != 'Regular'):
                 continue
             url = data['url'] + ('?' + row['query'] if row['query'] else '')
@@ -169,7 +169,8 @@ class TaylorParser(BaseParser):
                                        image_url=data['image']))
         if not offers:
             return []
-        best = min(offers, key=lambda o: (-o.discount_pct, o.current_price, o.variant_key))
+        best = min(offers, key=lambda o: (-o.discount_pct, -(o.original_price - o.current_price),
+                                          o.current_price, o.variant_key))
         return [Product(name=data['name'], url=data['url'], current_price=best.current_price,
                         original_price=best.original_price, product_type=data['category'],
                         brand=data['brand'], image_url=data['image'], offers=offers)]

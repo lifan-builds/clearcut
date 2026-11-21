@@ -3,10 +3,16 @@ from datetime import UTC, datetime, timedelta
 from math import ceil
 
 from deal_common.catalog.definition import manufacturer_name
-from deal_common.offers import discount, size_key
+from deal_common.offers import (
+    discount,
+    is_addon_variant,
+    is_price_collapse_addon,
+    plausible_offer,
+    size_key,
+)
 
 PAGE_SIZE = 24
-FRESHNESS_HOURS = 24
+FRESHNESS_HOURS = 36
 
 
 def is_fresh(timestamp: str | None, now: datetime) -> bool:
@@ -33,13 +39,24 @@ def query(sources: list[dict], filters: dict, *, now: datetime | None = None,
             continue
         fresh_sources += 1
         for product in source["products"]:
+            plausible_offers = [
+                offer for offer in product["offers"]
+                if offer["availability"] in {"in_stock", "unknown"}
+                and plausible_offer(offer["current_price"], offer["original_price"])
+                and not is_addon_variant(offer.get("options"))
+            ]
+            max_reference = max((o["original_price"] for o in plausible_offers), default=0.0)
+            valid_offers = [o for o in plausible_offers
+                            if not is_price_collapse_addon(o["original_price"], max_reference)]
+            if not valid_offers:
+                continue
             brand = (manufacturer_name(product["brand"], brand_aliases=brand_aliases)
                      if brand_aliases else product["brand"])
             facets["brand"].add(brand)
             facets["store"].add(source["name"])
             if product["platform"]:
                 facets["platform"].add(product["platform"])
-            for offer in product["offers"]:
+            for offer in valid_offers:
                 if offer["size"] and offer["availability"] == "in_stock":
                     facets["size"].add(offer["size"])
             if requested_brand and requested_brand != brand:
@@ -54,15 +71,14 @@ def query(sources: list[dict], filters: dict, *, now: datetime | None = None,
                 if not any(needle in (product["name"] + " " + b).casefold() for b in (product["brand"], brand)):
                     continue
             eligible = []
-            for offer in product["offers"]:
+            for offer in valid_offers:
                 if filters.get("size") and (offer["availability"] != "in_stock"
                         or size_key(offer["size"]) != size_key(filters["size"])):
                     continue
                 if filters.get("stock") and offer["availability"] != "in_stock":
                     continue
                 pct = discount(offer["current_price"], offer["original_price"])
-                if (pct <= 0 or offer["availability"] not in {"in_stock", "unknown"}
-                        or pct < filters["min_discount"]
+                if (pct < filters["min_discount"]
                         or offer["original_price"] < filters["min_reference"]
                         or (filters["max_price"] and offer["current_price"] > filters["max_price"])):
                     continue

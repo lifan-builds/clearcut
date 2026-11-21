@@ -8,7 +8,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from bs4 import BeautifulSoup
 
 from deal_common.models import Product
-from deal_common.offers import VariantOffer, size_key
+from deal_common.offers import VariantOffer, plausible_offer, size_key
 from deal_common.parsers.base import BaseParser
 
 ORIGIN = 'https://bikecloset.com'
@@ -160,7 +160,7 @@ def decode_offer(parent, variant):
         if type(variant.get(flag)) is not bool:
             raise ValueError('Unknown Bike Closet stock or purchase status')
     price, reference = money(variant['prices'], 'price'), money(variant['prices'], 'regular_price')
-    if (not new_condition(parent) or not 0 < price < reference or not variant['is_in_stock']
+    if (not new_condition(parent) or not plausible_offer(price, reference) or not variant['is_in_stock']
             or not variant['is_purchasable'] or variant['is_on_backorder']
             or not size_consistent(parent['name'], labels.get('Size'))):
         return None
@@ -257,7 +257,8 @@ class BikeClosetParser(BaseParser):
         offers = [offer for v in variants if (offer := decode_offer(parent, v)) is not None]
         if not offers:
             return []
-        best = min(offers, key=lambda o: (-o.discount_pct, o.current_price, o.variant_key))
+        best = min(offers, key=lambda o: (-o.discount_pct, -(o.original_price - o.current_price),
+                                          o.current_price, o.variant_key))
         return [Product(name=unescape(parent['name']), url=page_url, current_price=best.current_price,
                         original_price=best.original_price, brand=manufacturer(parent),
                         product_type=product_kind(parent), image_url=best.image_url, offers=offers)]

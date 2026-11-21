@@ -34,7 +34,7 @@ def population(path, catalog):
                       AND o.original_price>=500 AND o.current_price>=1 AND o.discount_pct>=40 AND o.discount_pct<95
                       AND o.availability='in_stock'
                 ) SELECT * FROM selected WHERE rank=1 ORDER BY discount_pct DESC,name,url
-            """, ((datetime.now(UTC)-timedelta(hours=24)).replace(tzinfo=None).isoformat(),
+            """, ((datetime.now(UTC)-timedelta(hours=36)).replace(tzinfo=None).isoformat(),
                   datetime.now(UTC).replace(tzinfo=None).isoformat())).fetchall()
         cards = [{"name": r["name"], "url": r["url"], "store": r["store"], "currency": r["currency"],
                   "offer": {"variant_key": r["variant_key"], "url": r["purchase_url"], "current_price": r["current_price"],

@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 from bs4 import BeautifulSoup
 
 from deal_common.models import Product
-from deal_common.offers import VariantOffer
+from deal_common.offers import VariantOffer, plausible_offer
 from deal_common.parsers.base import BaseParser
 from deal_common.parsers.common import parse_price
 
@@ -137,7 +137,7 @@ def _product(item: dict) -> Product | None:
             continue
         price = _money(prices.get(sku))
         reference = _money(variant.get('compare_at_price_usd'))
-        if price is None or reference is None or price >= reference:
+        if price is None or reference is None or not plausible_offer(price, reference, max_discount=95):
             continue
         quantity = variant.get('inventory_quantity')
         confirmed = (variant.get('available') is True and type(quantity) is int and quantity > 0
@@ -155,7 +155,8 @@ def _product(item: dict) -> Product | None:
         ))
     if not offers:
         return None
-    best = min(offers, key=lambda o: (-o.discount_pct, o.current_price, o.variant_key))
+    best = min(offers, key=lambda o: (-o.discount_pct, -(o.original_price - o.current_price),
+                                      o.current_price, o.variant_key))
     return Product(
         name=title, url=url, current_price=best.current_price, original_price=best.original_price,
         image_url=best.image_url, brand=item.get('vendor'), product_type=item.get('product_type'),

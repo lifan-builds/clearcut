@@ -11,9 +11,24 @@ from deal_common.offers import VariantOffer
 
 def model_year(name: str) -> int | None:
     """Read explicit title years; never infer age from price or first observation."""
+    season_4_2 = re.findall(r"\b(20\d{2})\s*[-–/]\s*(\d{2})\b(?![\d.])", name)
+    if season_4_2:
+        start, end = int(season_4_2[-1][0]), int(season_4_2[-1][1])
+        if (start % 100) + 1 == end:
+            return (start // 100) * 100 + end
     years = re.findall(r"\b(?:19|20)\d{2}\b", name)
     if years:
         return int(years[-1])
+    for start_s, end_s in reversed(re.findall(
+        r"(?<![\d.])\b(1[5-9]|2\d)\s*[-–/]\s*(\d{2})\b(?![\d.])(?!\s*(?:mm|cm|m\b|in\b|\"|l\b|oz\b|din\b))",
+        name,
+        re.IGNORECASE,
+    )):
+        if int(start_s) + 1 == int(end_s):
+            return 2000 + int(end_s)
+    apostrophe = re.findall(r"(?<![A-Za-z0-9])['’](1[89]|2\d)\b(?![\d.\"’'])", name)
+    if apostrophe:
+        return 2000 + int(apostrophe[-1])
     if re.search(r"\b00\s*[-–]\s*01\b", name):
         return 2001
     return None

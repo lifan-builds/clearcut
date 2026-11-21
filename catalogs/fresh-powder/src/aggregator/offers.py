@@ -40,7 +40,7 @@ def selection_sql(*, size='', size_min=None, size_max=None, min_price=0, max_pri
     # Old snapshots cache rounded percentages. Derive decisions from their prices
     # without migrating the snapshot or altering historical observations.
     pct = 'price_discount(o.current_price, o.original_price)'
-    conditions = ['o.current_price >= 1', f'{pct} > 0', f'{pct} < 95']
+    conditions = ['o.current_price >= 1', 'o.original_price < 99999', f'{pct} > 0', f'{pct} < 95']
     params = []
     for sql, value in [('o.current_price >= ?', min_price), ('o.current_price <= ?', max_price),
                        ('o.original_price >= ?', min_reference), (f'{pct} >= ?', min_discount)]:

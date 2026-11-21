@@ -7,22 +7,41 @@ from deal_common.models import Product
 
 _EXCLUDED_TAGS = frozenset({
     "used", "pre-owned", "refurbished", "reconditioned", "open box",
+    "factory second", "blem", "blemished", "gift card",
     "pickup only", "in store only", "demo", "showroom", "display model",
 })
 _EXCLUDED_TEXT_RE = re.compile(
     r"\b(?:(?:pepper|salt|coffee|spice|meat|food) (?:ball )?grinders?|"
     r"used|pre-owned|refurbished|reconditioned|recon|renewed|open.box|"
-    r"scratch|dent|demo|showroom|display model)\b"
+    r"factory seconds?|blem(?:ished)?|scratch|dent|demo|showroom|display model|"
+    r"gift ?cards?|gift ?certificates?|e-?gift|store credit|"
+    r"(?:shipping|package|order|damage) (?:protection|insurance)|navidium|route protection|"
+    r"(?:extended|accident) warrant(?:y|ies)|warrant(?:y|ies) plans?|protection plans?|service plans?|"
+    r"(?:reservation|pre[- ]?order|layaway) deposits?)\b"
 )
 _EXCLUDED_KIND_RE = re.compile(
     r"^oscillating tool access$|\b("
     r"accessories|parts|rests?|jigs?(?!\s+saws?\b)|templates?|blades|bits|cutters|"
     r"knives|clamps|vises|guides|gauges|books|casters|storage|staples|sawhorses|"
     r"abrasives|sanding paper|batteries and chargers|apparel|fasteners|"
-    r"hand tools|turning tools|consumables?"
+    r"hand tools|turning tools|consumables?|chisels|screwdrivers|files|rasps|"
+    r"gift cards|warranties"
     r")\b"
 )
-_MANUAL_RE = re.compile(r"\b(?:point drivers?|hack ?saws?|nut drivers?)\b")
+_MANUAL_RE = re.compile(
+    r"\b(?:"
+    r"point drivers?|hack ?saws?|nut drivers?|screwdrivers?|"
+    r"coping saws?|flush[- ]?cut saws?|dovetail saws?|(?:japanese )?pull saws?|"
+    r"ryoba|dozuki|kataba|fret saws?|jeweler'?s? saws?|tenon saws?|carcass saws?|"
+    r"back ?saws?|gent'?s? saws?|veneer saws?|bow saws?|pruning saws?|folding saws?|"
+    r"jab saws?|keyhole saws?|drywall saws?|hand ?saws?|miter box(?:es)?|"
+    r"(?:t[- ]handle|multi[- ]bit|cushion[- ]grip|precision|insulated|ratcheting) (?:[\w-]+ )?drivers?|"
+    r"(?:hex|torx|slotted|phillips|pozidriv|socket|nut) (?:key )?drivers?|"
+    r"(?:manual|hand) impact drivers?|"
+    r"hand sanders?|sanding blocks?|manual sanders?|drywall pole sanders?|"
+    r"hand drills?|push drills?|breast drills?|brace drills?|pin vises?"
+    r")\b"
+)
 _WELDING_COMPONENT = r"(?:spool\s*guns?|mig guns?|wire feed(?:ers?| units?)|tig torch(?:es)?|plasma torch(?:es)?)"
 _WELDING_MACHINE = r"(?:welders?|welding machines?|plasma cutters?)"
 _WELDING_COMPONENT_RE = re.compile(rf"\b{_WELDING_COMPONENT}\b")
@@ -48,7 +67,20 @@ _PRIMARY_ACCESSORY_RE = re.compile(
     r"stand (?:only|kit)|clamp kit|tool bag|rests?|jigs?(?!\s+saw\b)|templates?|"
     r"stop collar|depth stops?|drill(?:ing)? guides?|sharpening station|saw indicator|"
     r"vac switch|tool cabinet|machine cabinet|outfeed table|work station|"
-    r"router table system|pole saw|how to|driver kit for"
+    r"router table system|pole saw|how to|driver kit for|"
+    r"(?:block|bench|smoothing|jack|jointer|fore|trying|scrub|shoulder|rabbet|rebate|"
+    r"router|plow|plough|hand|apron|chisel|chamfer|bullnose|dovetail) planes?|"
+    r"spokeshaves?|(?:cabinet|card) scrapers?|chisels?(?!\s+mortis)|gouges?|rasps?|hand files?|"
+    r"arbors?|collets?|fences?|miter gauges?|featherboards?|push (?:blocks?|sticks?)|"
+    r"zero[- ]?clearance(?: inserts?| plates?)?|throat plates?|dado inserts?|table inserts?|"
+    r"riving kni(?:fe|ves)|(?:dust|filter|vacuum|vac|collection|chip|fleece|disposable) bags?|"
+    r"dust (?:hoods?|ports?)|blast gates?|"
+    r"guide rails?|track saw (?:rails?|tracks?|guides?)|parallel guides?|rail connectors?|splinter ?guards?|"
+    r"sub[- ]?bases?|base ?plates?|edge guides?|template guides?|guide bushings?|bushing sets?|"
+    r"router (?:lifts?|tables?)|extension (?:wings?|tables?)|bed extensions?|"
+    r"faceplates?|(?:live|drive) centers?|(?:scroll|lathe) chucks?|jaw sets?|banjos?|"
+    r"mobile bases?|(?:miter saw|table saw|planer|roller|universal) stands?|"
+    r"carbon brush(?:es)?|power cords?|(?:drive|v[- ]?)belts?|bandsaw tires?|urethane tires?"
     r")\b"
 )
 _WORKSHOP_EQUIPMENT_RE = re.compile(
@@ -66,8 +98,15 @@ _PLATFORMS = (
     (re.compile(r"\bm12\b"), "milwaukee", "Milwaukee M12"),
     (re.compile(r"\bflexvolt\b"), "dewalt", "DeWalt FLEXVOLT"),
     (re.compile(r"\b20v\s*max\b"), "dewalt", "DeWalt 20V MAX"),
+    (re.compile(r"\b12v\s*max\b"), "dewalt", "DeWalt 12V MAX"),
     (re.compile(r"\bxgt\b"), "makita", "Makita XGT"),
     (re.compile(r"\blxt\b"), "makita", "Makita LXT"),
+    (re.compile(r"\b18v\b"), "festool", "Festool 18V"),
+    (re.compile(r"\b18v\b"), "bosch", "Bosch 18V"),
+    (re.compile(r"\b(?:36v|multivolt)\b"), "metabo hpt", "Metabo HPT 36V MultiVolt"),
+    (re.compile(r"\b18v\b"), "metabo hpt", "Metabo HPT 18V"),
+    (re.compile(r"\b24v\b"), "flex", "FLEX 24V"),
+    (re.compile(r"\b18v\b"), "ridgid", "Ridgid 18V"),
 )
 
 
@@ -86,7 +125,11 @@ def classify(product: Product) -> Classification | None:
 
     primary_title = re.split(r"\s+(?:(?:with|including)\s+|w/\s*)", title, maxsplit=1)[0]
     primary_text = f"{primary_title} {kind}"
-    identity_title = re.split(r"\b(?:for|compatible|fits?)\b", primary_title, maxsplit=1)[0]
+    identity_title = re.split(
+        r"(?<!\bbuilt )(?<!\bmade )(?<!\bdesigned )(?<!\bengineered )(?<!\bideal )\b(?:for|compatible|fits?)\b",
+        primary_title,
+        maxsplit=1,
+    )[0]
     powered = bool(
         re.search(r"\b(?:electric|corded|cordless|pneumatic|powered)\b", identity_title)
         and not re.search(r"\b(?:manual(?:ly)?|non[- ]?powered|unpowered|hand[- ](?:powered|operated))\b", identity_title)
@@ -121,10 +164,21 @@ def classify(product: Product) -> Classification | None:
         for tag in tags
         if (match := re.fullmatch(r"(.+) (?:welding|stick) machine", tag))
     )
+    if (
+        identity_title != primary_title
+        and not bundle_machine
+        and not _WORKSHOP_EQUIPMENT_RE.search(identity_title)
+        and not _POWER_TOOL_RE.search(identity_title)
+        and not _WELDING_MACHINE_RE.search(identity_title)
+        and not _MANUAL_RE.search(identity_title)
+        and not re.search(r"\bratchets?\b", identity_title)
+    ):
+        return None
     if _WELDING_KIND_RE.fullmatch(kind) or tags & _WELDING_TAGS or bundle_machine:
         category = "Workshop equipment"
     elif (
-        (re.search(r"\b(band saw|bandsaw)\b", primary_text) and re.search(r"\b(cordless|portable|20v|m18|m12)\b", primary_text))
+        (re.search(r"\b(band saw|bandsaw)\b", primary_text)
+         and re.search(r"\b(cordless|portable|20v|18v|24v|36v|40v|m18|m12|lxt|xgt)\b", primary_text))
         or re.search(r"\b(hand|handheld|cordless) planer\b", primary_text)
         or (re.search(r"\bplaner\b", primary_text) and re.search(r"\bcordless\b", primary_title))
     ):
@@ -207,12 +261,37 @@ CATALOG = Catalog(
     mark="↘",
     formats=("Bare tool", "Kit", "Bundle", "Not specified"),
     brand_aliases=(
-        ("sawstop", "SawStop"), ("dewalt", "DeWalt"), ("flex", "FLEX"),
+        ("axiom", "Axiom"), ("axiom precision", "Axiom"),
+        ("bessey", "Bessey"), ("bessey tools", "Bessey"),
+        ("bosch", "Bosch"), ("bosch power tools", "Bosch"), ("bosch tools", "Bosch"),
+        ("dewalt", "DeWalt"), ("dewalt power tools", "DeWalt"), ("dewalt tools", "DeWalt"),
+        ("esab", "ESAB"), ("esab welding", "ESAB"),
+        ("fein", "Fein"), ("fein power tools", "Fein"),
+        ("festool", "Festool"), ("festool usa", "Festool"),
+        ("flex", "FLEX"), ("flex power tools", "FLEX"),
+        ("grizzly", "Grizzly"), ("grizzly industrial", "Grizzly"),
+        ("harvey", "Harvey"), ("harvey industries", "Harvey"), ("harvey woodworking", "Harvey"),
+        ("hilti", "Hilti"),
+        ("hobart", "Hobart"), ("hobart welding products", "Hobart"),
+        ("hypertherm", "Hypertherm"),
         ("jet", "JET"), ("jet tools", "JET"),
         ("kreg", "Kreg"), ("kreg tool", "Kreg"),
-        ("miller electric", "Miller"), ("lincoln electric", "Lincoln"), ("hobart welding products", "Hobart"),
-        ("axiom", "Axiom"), ("axiom precision", "Axiom"),
-        ("milwaukee", "Milwaukee"), ("milwaukee tool", "Milwaukee"),
+        ("laguna", "Laguna"), ("laguna tools", "Laguna"),
+        ("lincoln", "Lincoln"), ("lincoln electric", "Lincoln"),
+        ("makita", "Makita"), ("makita power tools", "Makita"), ("makita usa", "Makita"),
+        ("metabo", "Metabo"), ("metabo corporation", "Metabo"),
+        ("metabo hpt", "Metabo HPT"), ("metabo-hpt", "Metabo HPT"), ("hitachi/metabo hpt", "Metabo HPT"),
+        ("miller", "Miller"), ("miller electric", "Miller"),
+        ("milwaukee", "Milwaukee"), ("milwaukee electric tool", "Milwaukee"), ("milwaukee tool", "Milwaukee"),
+        ("mirka", "Mirka"), ("mirka abrasives", "Mirka"),
+        ("oliver", "Oliver"), ("oliver machinery", "Oliver"),
+        ("powermatic", "Powermatic"), ("powermatic tools", "Powermatic"),
+        ("ridgid", "Ridgid"), ("ridgid power tools", "Ridgid"), ("ridgid tools", "Ridgid"),
+        ("rikon", "Rikon"), ("rikon power tools", "Rikon"),
+        ("sawstop", "SawStop"),
+        ("scm", "SCM"), ("scm group", "SCM"),
+        ("shaper", "Shaper"), ("shaper tools", "Shaper"),
+        ("wen", "WEN"), ("wen products", "WEN"),
     ),
     buying_note=(
         "A bare tool does not include a battery or charger. A kit label does not guarantee particular contents. "

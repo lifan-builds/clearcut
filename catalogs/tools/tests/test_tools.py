@@ -140,32 +140,32 @@ def test_explicit_powered_machines_and_kits_with_included_accessories_survive(ti
     assert (actual.category, actual.format, actual.platform) == ("Power tools", form, "")
 
 
-@pytest.mark.parametrize(("name", "kind", "category", "form"), [
+@pytest.mark.parametrize(("name", "kind", "category", "form", "platform"), [
     ("Festool RTS 400 Orbital Sander + CT 26 EI HEPA Dust Extractor Bundle w/ Abrasives & Filter Bags RTS+CT26",
-     "Power Tools", "Workshop equipment", "Bundle"),
+     "Power Tools", "Workshop equipment", "Bundle", ""),
     ("Fein MULTIMASTER AMM 700 MAX Black Edition 18V Cordless Oscillating Multi-Tool Bundle with 6-Piece E-Cut Blade Set 7129476109035222967010",
-     "Power Tools", "Power tools", "Bundle"),
+     "Power Tools", "Power tools", "Bundle", ""),
     ('Bosch 18V Brushless 6-1/2" Blade Right Circular Saw (Bare) GKS18V-22N',
-     "Power Tools", "Power tools", "Not specified"),
+     "Power Tools", "Power tools", "Not specified", "Bosch 18V"),
     ('Fein MCCS14 14" Slugger Metal Cutting Chop Saw Bundle w/ Free MCBL14 Mild Steel Blade',
-     "Bundles", "Power tools", "Bundle"),
-    ("Dust Collector with Filter", "Dust Collection", "Workshop equipment", "Not specified"),
-    ("Table Saw with Stand", "Table Saws", "Workshop equipment", "Not specified"),
-    ("Dust Extractor with Filter Bags", "Power Tools", "Workshop equipment", "Not specified"),
-    ("Cordless Drill with Blade Kit", "Power Tools", "Power tools", "Not specified"),
-    ("Circular Saw with Blade Bundle", "Power Tools", "Power tools", "Not specified"),
-    ("Cordless Drill Kit Including Drill Bits", "Power Tools", "Power tools", "Kit"),
+     "Bundles", "Power tools", "Bundle", ""),
+    ("Dust Collector with Filter", "Dust Collection", "Workshop equipment", "Not specified", ""),
+    ("Table Saw with Stand", "Table Saws", "Workshop equipment", "Not specified", ""),
+    ("Dust Extractor with Filter Bags", "Power Tools", "Workshop equipment", "Not specified", ""),
+    ("Cordless Drill with Blade Kit", "Power Tools", "Power tools", "Not specified", ""),
+    ("Circular Saw with Blade Bundle", "Power Tools", "Power tools", "Not specified", ""),
+    ("Cordless Drill Kit Including Drill Bits", "Power Tools", "Power tools", "Kit", ""),
     ("Bosch EVS Fixed-Base Router w/ Trigger Control, 2.3 HP MRF23EVS",
-     "Power Tools", "Power tools", "Not specified"),
+     "Power Tools", "Power tools", "Not specified", ""),
     ('Bosch 18V Brushless 4-1/2" Angle Grinder with Slide Switch (Bare Tool) GWS18V-8-2N',
-     "Power Tools", "Power tools", "Bare tool"),
+     "Power Tools", "Power tools", "Bare tool", "Bosch 18V"),
     ('Ionic Drive 1/4" Trim Router with 2AH Battery and Charger Kit',
-     "Routers", "Power tools", "Kit"),
+     "Routers", "Power tools", "Kit", ""),
 ])
-def test_complete_tools_keep_explicitly_included_accessories(name, kind, category, form):
+def test_complete_tools_keep_explicitly_included_accessories(name, kind, category, form, platform):
     actual = classify(Product(name, "https://example.com/products/tool", 300, 500, product_type=kind))
     assert actual is not None
-    assert (actual.category, actual.format, actual.platform) == (category, form, "")
+    assert (actual.category, actual.format, actual.platform) == (category, form, platform)
 
 
 @pytest.mark.parametrize(("name", "kind", "tags"), [
@@ -298,3 +298,106 @@ def test_brand_aliases_bundle_format_and_query_preserve_exact_offers():
     assert [(c["store"], c["offer"]["variant_key"], c["offer"]["current_price"]) for c in result["cards"]] == [
         ("Cyberweld", "456", 1700), ("Bakers", "123", 1800),
     ]
+
+
+@pytest.mark.parametrize(("name", "kind"), [
+    ("Woodcraft Gift Card", "Power Tools"),
+    ("Extend 3-Year Power Tool Protection Plan", "Power Tools"),
+    ("Table Saw Extended Warranty", "Table Saws"),
+    ("Navidium Shipping Protection", "Power Tools"),
+    ("Reservation Deposit - Cabinet Saw", "Table Saws"),
+    ("Drill Press Arbor MT2 to JT3", "Drill Presses"),
+    ("Bosch 1/2 in. Router Collet Chuck", "Routers"),
+    ("SawStop 36 in. T-Glide Table Saw Rip Fence", "Table Saws"),
+    ("SawStop Zero-Clearance Insert for Table Saw", "Table Saws"),
+    ("phenolic Throat Plate for 10 in. Table Saw", "Table Saws"),
+    ("Table Saw Riving Knife", "Table Saws"),
+    ("Incra Miter 1000HD Miter Gauge", "Table Saws"),
+    ("Magswitch Universal Featherboard", "Table Saws"),
+    ("Miter Saw Dust Bag", "Miter Saws"),
+    ("Festool Selfclean Fleece Filter Bags for CT 26 Dust Extractor", "Dust Extractors"),
+    ("Shop Vacuum Bags 5-Pack", "Vacuums"),
+    ("4 in. Aluminum Blast Gate", "Dust Collection"),
+    ("Festool FS 1400/2 Guide Rail", "Saws"),
+    ("Track Saw Guide Rail 55 in.", "Saws"),
+    ("Parallel Guides for Track Saw", "Saws"),
+    ("Jessem Mast-R-Lift II Router Lift", "Routers"),
+    ("Acrylic Router Sub-Base", "Routers"),
+    ("Brass Router Template Guide Kit", "Routers"),
+    ("Nova G3 Reversible Woodturning Lathe Chuck", "Lathes"),
+    ("MT2 Heavy Duty Live Center", "Lathes"),
+    ("Universal Mobile Base for Cabinet Saw", "Table Saws"),
+    ("Urethane Bandsaw Tires for 14 in. Band Saw", "Band Saws"),
+    ("Carbon Brushes for Angle Grinder", "Grinders"),
+    ("Side Handle for Angle Grinder", "Grinders"),
+    ("Dust Shroud Compatible with Angle Grinder", "Grinders"),
+    ("Eclipse Coping Saw", "Saws"),
+    ("Flush Cut Saw", "Saws"),
+    ("Veritas Dovetail Saw", "Saws"),
+    ("Suizan Japanese Ryoba Pull Saw", "Saws"),
+    ("Gyokucho Dozuki Razor Saw", "Saws"),
+    ("Lie-Nielsen Carcass Saw", "Saws"),
+    ("Tenon Back Saw", "Saws"),
+    ("Knew Concepts Fret Saw", "Saws"),
+    ("Stanley Sweetheart Low Angle Block Plane", "Planers"),
+    ("Lie-Nielsen No. 4 Smoothing Bench Plane", "Planers"),
+    ("Veritas Low-Angle Jointer Plane", "Jointers"),
+    ("Veritas Large Hand Router Plane", "Routers"),
+    ("Lie-Nielsen Router Plane", "Routers"),
+    ("Narex 4-Piece Bench Chisel Set", "Power Tools"),
+    ("SDS-Plus Scaling Chisel for Rotary Hammer", "Rotary Hammers"),
+    ("Wera Kraftform Multi-Bit Screwdriver", "Drills"),
+    ("Klein Cushion-Grip Screwdriver", "Power Tools"),
+    ("Wiha Precision Torx Driver", "Power Tools"),
+    ("Bondhus T-Handle Hex Driver", "Power Tools"),
+    ("Manual Hand Impact Driver", "Power Tools"),
+    ("Hook and Loop Hand Sanding Block", "Sanders"),
+    ("Yankee Push Drill", "Drills"),
+])
+def test_warranties_machine_accessories_and_hand_tools_excluded(name, kind):
+    assert classify(Product(name, "https://example.com/products/item", 120, 240, product_type=kind)) is None
+
+
+@pytest.mark.parametrize(("name", "brand", "kind", "expected_category", "expected_platform"), [
+    ("Festool TSC 55 KEB 18V Cordless Track Saw", "Festool", "Saws", "Power tools", "Festool 18V"),
+    ("Bosch PROFACTOR 18V Hitman Rotary Hammer", "Bosch Power Tools", "Rotary Hammers", "Power tools", "Bosch 18V"),
+    ("Metabo HPT 36V MultiVolt Brushless Circular Saw", "Metabo HPT", "Saws", "Power tools", "Metabo HPT 36V MultiVolt"),
+    ("Metabo HPT 18V Brushless Impact Driver", "Metabo HPT", "Drivers", "Power tools", "Metabo HPT 18V"),
+    ("FLEX 24V Brushless Hammer Drill Kit", "FLEX", "Drills", "Power tools", "FLEX 24V"),
+    ("Ridgid 18V Brushless SubCompact Impact Wrench", "Ridgid", "Impact Wrench", "Power tools", "Ridgid 18V"),
+    ("DeWalt 12V MAX XTREME Cordless Screwdriver", "DeWalt", "Drills", "Power tools", "DeWalt 12V MAX"),
+    ("Makita 18V LXT Portable Band Saw", "Makita", "Band Saw", "Power tools", "Makita LXT"),
+    ("Milwaukee M12 Hatchet Cordless Pruning Saw", "Milwaukee", "Saws", "Power tools", "Milwaukee M12"),
+    ("JET JBM-5 Benchtop Hollow Chisel Mortiser", "JET", "Mortisers", "Workshop equipment", ""),
+    ("Built for Pros 10 Inch Cabinet Table Saw", "Powermatic", "Table Saws", "Workshop equipment", ""),
+])
+def test_expanded_cordless_platforms_and_legitimate_machines(name, brand, kind, expected_category, expected_platform):
+    actual = classify(Product(name, "https://example.com/products/tool", 250, 450, product_type=kind, brand=brand))
+    assert actual is not None
+    assert (actual.category, actual.platform) == (expected_category, expected_platform)
+
+
+@pytest.mark.parametrize(("raw_brand", "canonical"), [
+    ("Festool USA", "Festool"),
+    ("Bosch Power Tools", "Bosch"),
+    ("Makita USA", "Makita"),
+    ("Powermatic Tools", "Powermatic"),
+    ("Laguna Tools", "Laguna"),
+    ("Grizzly Industrial", "Grizzly"),
+    ("Rikon Power Tools", "Rikon"),
+    ("Oliver Machinery", "Oliver"),
+    ("Fein Power Tools", "Fein"),
+    ("Hitachi/Metabo HPT", "Metabo HPT"),
+    ("Metabo Corporation", "Metabo"),
+    ("Ridgid Power Tools", "Ridgid"),
+    ("Hilti", "Hilti"),
+    ("Bessey Tools", "Bessey"),
+    ("Mirka Abrasives", "Mirka"),
+])
+def test_tools_brand_aliases_normalize_vendor_variants(raw_brand, canonical):
+    url = "https://example.com/products/saw"
+    saw = Product(
+        "10 Inch Table Saw", url, 800, 1200, product_type="Table Saws", brand=raw_brand,
+        offers=[VariantOffer("1", f"{url}?variant=1", 800, 1200, availability="in_stock")],
+    )
+    assert normalize([saw], CATALOG, "example.com")[0]["brand"] == canonical

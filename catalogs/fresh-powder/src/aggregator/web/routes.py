@@ -43,9 +43,9 @@ async def _build_store_statuses() -> list[dict]:
         last = datetime.fromisoformat(st["last_scraped"])
         age = now - last
         st["age_hours"] = age.total_seconds() / 3600
-        if timedelta(0) <= age <= timedelta(hours=24):
+        if timedelta(0) <= age <= timedelta(hours=36):
             st["freshness"] = "fresh"
-        elif timedelta(hours=24) < age < timedelta(hours=48):
+        elif timedelta(hours=36) < age < timedelta(hours=72):
             st["freshness"] = "stale"
         else:
             st["freshness"] = "old"

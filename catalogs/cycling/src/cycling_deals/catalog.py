@@ -16,18 +16,62 @@ FRAME_SIZE_PATTERN = (
 )
 
 _EXCLUDED_TAGS = frozenset({
-    "used", "pre-owned", "demo", "consignment",
+    "used", "pre-owned", "demo", "ex-demo", "consignment", "rental", "ex-rental",
+    "factory second", "crash replacement", "gift card",
     "pickup only", "in store only", "in-store-only", "no-ship", "ebike block ship",
     "badge:ship to store only",
     "condition:lightly-ridden", "condition:new-cosmetic-blem", "condition:open-box",
 })
 _EXCLUDED_TEXT_RE = re.compile(
-    r"\b(kids?|junior|youth|boys|girls|used|pre-owned|demo|display|consignment|"
-    r"refurbished|reconditioned|returned|unridden|blem(?:ish(?:ed)?)?|open.box|scratch|dent)\b"
+    r"\b("
+    r"kids?|junior|youths?|boys|girls|toddlers?|infants?|child(?:ren)?|groms?|"
+    r"used|pre-owned|demo|ex-demo|display|consignment|rental|ex-rental|factory seconds?|"
+    r"refurbished|reconditioned|returned|unridden|blem(?:ish(?:ed)?)?|open.box|scratch|dent|"
+    r"gift ?cards?|gift ?certificates?|e-?gift|store credit|"
+    r"(?:shipping|package|order|damage) (?:protection|insurance)|navidium|route protection|"
+    r"(?:extended|accident) warrant(?:y|ies)|warrant(?:y|ies) plans?|protection plans?|"
+    r"crash replacements?|"
+    r"(?:assembly|build|boxing|tuning|tune[- ]?up|fitting|service) (?:fees?|services?|charges?|labor)|"
+    r"bike (?:assembly|fitting|tune[- ]?ups?)|(?:reservation|pre[- ]?order|layaway) deposits?|"
+    r"(?:balance|push|run) bikes?|strider|training wheels?|unicycles?|tricycles?|adult trikes?|"
+    r"tag[- ]?alongs?|(?:bike|bicycle|child) trailers?|"
+    r"woom|prevelo|early rider|guardian bikes?|frog bikes?|spawn cycles?|precaliber|riprock|hotrock|"
+    r"(?:20|24)\s*(?:\"|''|-?in(?:ch)?)\s*(?:wheel\s*)?(?:bikes?|bicycles?|mtb|mountain|trail|coaster)|"
+    r"(?:20|24)\s*(?:\"|''|-?in(?:ch)?)?\s+wheels?"
+    r")\b"
+    r"|\b(?:12|14|16)\s*(?:\"|''|-?in(?:ch)?\b)(?!\s*(?:speed|spd)\b)"
 )
 _PRIMARY_APPAREL_RE = re.compile(
     r"\b(socks?|pants?|bottles?|seat ?posts?|clamps?|goggles?|jackets?|shirts?|"
     r"gloves?|jerseys?|shorts|shoes?|helmets?)\b"
+)
+_PRIMARY_PART_RE = re.compile(
+    r"\b("
+    r"ride\s*wrap|invisiframe|"
+    r"frame (?:protection|protectors?|guards?|tapes?|films?|wraps?|skin kits?)|"
+    r"(?:downtube|chainstay|seatstay|top ?tube|fork|crank) (?:protection|protectors?|guards?|wraps?|armou?r)|"
+    r"tailgate pads?|(?:derailleur|rear|dropout|frame) hangers?|udh|thru[- ]?axles?|quick[- ]?releases?|skewers?|"
+    r"shock (?:mounts?|hardware|pumps?|springs?)|"
+    r"(?:mounting|pivot|bearing|rebuild|service|seal|bleed|tubeless|conversion|motor|mid[- ]?drive|hub motor) (?:kits?|hardware)|"
+    r"(?:replacement|spare|e-?bike|external|internal) batter(?:y|ies)|range extenders?|"
+    r"battery (?:packs?|chargers?|mounts?|covers?|cables?)|chargers?|power supplies|"
+    r"wheelsets?|groupsets?|cranksets?|cassettes?|chainrings?|bottom brackets?|headsets?|"
+    r"dropper posts?|saddles?|pedals?|cleats?|bar tape|tire liners?|inner tubes?|"
+    r"(?:bike|bicycle|frame|saddle|handlebar|seat|top ?tube|bikepacking|travel|wheel|gear|hydration) bags?|panniers?|"
+    r"(?:bike|bicycle|hitch|roof|trunk|cargo|rear|front|pannier|wall|storage) racks?|"
+    r"(?:bike|bicycle|repair|work|storage|display|truing) stands?|"
+    r"(?:bike|bicycle|smart|indoor|turbo|direct[- ]drive|wheel[- ]on) trainers?|rollers?|"
+    r"(?:bike|bicycle|u|chain|cable|folding) locks?|"
+    r"(?:bike|bicycle|floor|hand|mini|frame|co2) (?:pumps?|inflators?)|"
+    r"(?:bike|bicycle|cycling|gps) computers?|heart rate|power meters?|"
+    r"bottle cages?|touch[- ]?up paints?|multi[- ]?tools?|torque wrench(?:es)?"
+    r")\b"
+)
+_UNBRANDED_COMPONENT_RE = re.compile(
+    r"\b(forks?|shocks?|wheels?|rims?|hubs?|tires?|tyres?|tubes?|chains?|derailleurs?|"
+    r"shifters?|brakes?|rotors?|calipers?|handlebars?|stems?|fenders?|mudguards?|"
+    r"kickstands?|grips?|lights?|headlights?|taillights?|racks?|bags?|stands?|"
+    r"trainers?|locks?|pumps?|hangers?|axles?|batter(?:y|ies))\b"
 )
 _ACCESSORY_RE = re.compile(
     r"\b(helmets?|jerseys?|shorts|gloves?|shoes?|racks?|bags?|wheels?|tires?|tyres?|tubes?|"
@@ -65,10 +109,13 @@ def classify(product: Product) -> Classification | None:
         return None
 
     primary_title = re.split(r"\s+(?:with\s+|w/\s*|including\s+)", title, maxsplit=1)[0]
-    if _PRIMARY_APPAREL_RE.search(f"{primary_title} {kind}"):
+    if _PRIMARY_APPAREL_RE.search(f"{primary_title} {kind}") or _PRIMARY_PART_RE.search(primary_title):
         return None
     unbranded_title = title.replace(product.brand.casefold(), "") if product.brand else title
-    if kind == "bicycles" and re.search(r"\b(tires?|tyres?)\b", title) and not re.search(r"\b(bikes?|bicycles?|framesets?)\b", unbranded_title):
+    unbranded_primary = primary_title.replace(product.brand.casefold(), "") if product.brand else primary_title
+    if _UNBRANDED_COMPONENT_RE.search(unbranded_primary) and not re.search(
+        r"\b(bikes?|bicycles?|framesets?|frame\s*(?:&|and)\s*fork)\b", unbranded_primary
+    ):
         return None
     accessory_kind = re.sub(r"^(bikes and frames/bikes - electric/)electric mountain light weight(?=/|$)", r"\1electric mountain", kind)
     if _ACCESSORY_RE.search(accessory_kind):
@@ -148,23 +195,58 @@ CATALOG = Catalog(
     size_option_names=("size", "frame size", "framesize", "bike size"),
     size_value_pattern=FRAME_SIZE_PATTERN,
     brand_aliases=(
-        ("liv", "Liv"), ("time", "TIME"),
+        ("3t", "3T"), ("3t bikes", "3T"), ("3t cycling", "3T"),
+        ("allied", "Allied"), ("allied cycle works", "Allied"),
+        ("argon 18", "Argon 18"), ("argon18", "Argon 18"),
+        ("aventon", "Aventon"), ("aventón", "Aventon"), ("aventon bikes", "Aventon"),
+        ("basso", "Basso"), ("basso bikes", "Basso"),
+        ("bianchi", "Bianchi"), ("bianchi bicycles", "Bianchi"), ("bianchi bikes", "Bianchi"),
         ("bmc", "BMC"), ("bmc bikes", "BMC"),
-        ("cervelo", "Cervelo"), ("cervelo bikes", "Cervelo"),
+        ("cannondale", "Cannondale"), ("cannondale bicycles", "Cannondale"), ("cannondale bikes", "Cannondale"),
+        ("canyon", "Canyon"), ("canyon bicycles", "Canyon"), ("canyon bikes", "Canyon"),
+        ("cervelo", "Cervelo"), ("cervelo bikes", "Cervelo"), ("cervelo cycles", "Cervelo"),
+        ("cervélo", "Cervelo"), ("cervélo bikes", "Cervelo"), ("cervélo cycles", "Cervelo"),
         ("colnago", "Colnago"), ("colnago bikes", "Colnago"),
+        ("commencal", "Commencal"), ("commencal bikes", "Commencal"),
+        ("de rosa", "De Rosa"), ("de rosa bikes", "De Rosa"),
+        ("devinci", "Devinci"), ("devinci bikes", "Devinci"), ("cycles devinci", "Devinci"),
         ("enve", "ENVE"), ("enve bikes", "ENVE"), ("enve composites", "ENVE"),
+        ("evil", "Evil"), ("evil bike co", "Evil"), ("evil bike co.", "Evil"), ("evil bikes", "Evil"),
+        ("factor", "Factor"), ("factor bikes", "Factor"),
+        ("felt", "Felt"), ("felt bicycles", "Felt"), ("felt bikes", "Felt"),
+        ("forbidden", "Forbidden"), ("forbidden bike co", "Forbidden"), ("forbidden bike co.", "Forbidden"), ("forbidden bikes", "Forbidden"),
+        ("gazelle", "Gazelle"), ("gazelle bikes", "Gazelle"), ("royal dutch gazelle", "Gazelle"),
+        ("giant", "Giant"), ("giant bicycles", "Giant"), ("giant bikes", "Giant"),
+        ("gt", "GT"), ("gt bicycles", "GT"), ("gt bikes", "GT"),
         ("ibis", "Ibis"), ("ibis cycles", "Ibis"),
+        ("intense", "INTENSE"), ("intense bikes", "INTENSE"), ("intense cycles", "INTENSE"),
+        ("juliana", "Juliana"), ("juliana bicycles", "Juliana"), ("juliana bikes", "Juliana"),
+        ("kona", "Kona"), ("kona bicycle co", "Kona"), ("kona bicycle co.", "Kona"), ("kona bikes", "Kona"),
+        ("liv", "Liv"), ("liv bikes", "Liv"), ("liv cycling", "Liv"),
         ("look", "LOOK"), ("look cycle", "LOOK"),
+        ("marin", "Marin"), ("marin bicycles", "Marin"), ("marin bikes", "Marin"),
         ("masi", "Masi"), ("masi bicycles", "Masi"),
         ("mondraker", "Mondraker"), ("mondraker bikes", "Mondraker"),
+        ("norco", "Norco"), ("norco bicycles", "Norco"), ("norco bikes", "Norco"),
         ("open", "OPEN"), ("open bikes", "OPEN"),
         ("orbea", "Orbea"), ("orbea bikes", "Orbea"),
         ("pinarello", "Pinarello"), ("pinarello bikes", "Pinarello"),
         ("pivot", "Pivot"), ("pivot cycles", "Pivot"),
+        ("polygon", "Polygon"), ("polygon bikes", "Polygon"),
+        ("revel", "Revel"), ("revel bikes", "Revel"),
+        ("ridley", "Ridley"), ("ridley bikes", "Ridley"),
+        ("rocky mountain", "Rocky Mountain"), ("rocky mountain bicycles", "Rocky Mountain"), ("rocky mountain bikes", "Rocky Mountain"),
+        ("salsa", "Salsa"), ("salsa bikes", "Salsa"), ("salsa cycles", "Salsa"),
         ("santa cruz", "Santa Cruz"), ("santa cruz bicycles", "Santa Cruz"), ("santa cruz bikes", "Santa Cruz"),
         ("scott", "Scott"), ("scott bikes", "Scott"),
         ("specialized", "Specialized"), ("specialized bikes", "Specialized"),
+        ("state bicycle", "State Bicycle Co."), ("state bicycle co", "State Bicycle Co."), ("state bicycle co.", "State Bicycle Co."),
+        ("surly", "Surly"), ("surly bicycles", "Surly"), ("surly bikes", "Surly"),
+        ("time", "TIME"),
         ("transition", "Transition"), ("transition bikes", "Transition"),
+        ("trek", "Trek"), ("trek bicycle", "Trek"), ("trek bicycles", "Trek"), ("trek bikes", "Trek"),
+        ("wilier", "Wilier"), ("wilier bikes", "Wilier"), ("wilier triestina", "Wilier"),
+        ("yeti", "Yeti"), ("yeti bikes", "Yeti"), ("yeti cycles", "Yeti"),
     ),
     assets=Path(__file__).parent / "static",
     art_label="01 / THE NEXT RIDE",

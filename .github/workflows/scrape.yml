@@ -1,6 +1,8 @@
 name: Scrape Deals
 
 on:
+  schedule:
+    - cron: '15 10 * * *'
   workflow_dispatch:
     inputs:
       refresh_reviews:
@@ -52,7 +54,7 @@ jobs:
         env:
           REFRESH_STORES: ${{ inputs.stores }}
         run: |
-          args=(--delay 2 --max-pages 100 --report scrape-report.json)
+          args=(--delay 2 --max-pages 30 --report scrape-report.json)
           if [ -n "$REFRESH_STORES" ]; then
             IFS=',' read -ra selected <<< "$REFRESH_STORES"
             args+=(--min-stores "${#selected[@]}")

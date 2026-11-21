@@ -18,9 +18,10 @@ def catalog_cli(catalog: Catalog):
     @cli.command("refresh")
     @click.option("--database", type=click.Path(path_type=Path), required=True)
     @click.option("--max-pages", type=click.IntRange(1, 30), default=30, show_default=True)
-    def refresh_command(database, max_pages):
+    @click.option("--delay", type=click.FloatRange(min=0.0, max=30.0), default=1.5, show_default=True)
+    def refresh_command(database, max_pages, delay):
         """Fetch configured public sources. Incomplete sources retain previous data."""
-        reports = asyncio.run(refresh(catalog, database, max_pages=max_pages))
+        reports = asyncio.run(refresh(catalog, database, max_pages=max_pages, delay=delay))
         click.echo(json.dumps(reports, indent=2))
         if any(row["status"] != "complete" for row in reports):
             raise click.ClickException("Incomplete refresh; see source report above.")

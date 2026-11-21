@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import importlib
 import logging
-import math
 import re
 from collections import Counter
 from dataclasses import dataclass, replace
@@ -15,6 +14,11 @@ from urllib.parse import urlparse
 import httpx
 from deal_common.http import DEFAULT_HEADERS, fetch_listing, fetch_products
 from deal_common.models import Product
+from deal_common.offers import (
+    is_addon_variant,
+    is_price_collapse_addon,
+    plausible_offer,
+)
 from deal_common.parsers.base import BaseParser
 from deal_common.parsers.common import clean_product_name
 
@@ -39,7 +43,8 @@ log = logging.getLogger(__name__)
 
 # Per-domain semaphore to rate-limit concurrent requests
 _semaphores: dict[str, asyncio.Semaphore] = {}
-MAX_CONCURRENT_PER_DOMAIN = 2
+MAX_CONCURRENT_PER_DOMAIN = 1
+STORE_TIMEOUT_SECONDS = 900.0
 
 
 
@@ -158,7 +163,13 @@ def _products_to_deals(
     deals: list[AggregatedDeal] = []
     for p in products:
         if p.offers:
-            offers = [o for o in p.offers if o.current_price >= 1 and 0 < o.discount_pct < 95]
+            plausible = [
+                o for o in p.offers
+                if plausible_offer(o.current_price, o.original_price, max_discount=95)
+                and not is_addon_variant(o.options)
+            ]
+            max_ref = max((o.original_price for o in plausible), default=0.0)
+            offers = [o for o in plausible if not is_price_collapse_addon(o.original_price, max_ref)]
             if not offers:
                 continue
             best = min(offers, key=lambda o: (
@@ -173,12 +184,9 @@ def _products_to_deals(
         source_description = f"{name} {p.product_type or ''} {p.brand or ''}"
         if exclusion_reason(source_description, p.url):
             continue
-        if (not math.isfinite(p.current_price) or p.original_price is None
-                or not math.isfinite(p.original_price)
-                or urlparse(p.url).scheme not in {"https", "http"}
-                or not urlparse(p.url).netloc):
-            continue
-        if p.current_price < 1 or p.discount_pct <= 0 or p.discount_pct >= 95:
+        if (urlparse(p.url).scheme not in {"https", "http"}
+                or not urlparse(p.url).netloc
+                or not plausible_offer(p.current_price, p.original_price, max_discount=95)):
             continue
         category = categorize(name, p.url, p.product_type or "", brand=p.brand or "")
         raw_sizes = ", ".join(p.sizes) if p.sizes else None
@@ -327,61 +335,66 @@ async def scrape_all(
     browser_stores = [s for s in stores if s.use_browser]
 
     all_deals: list[AggregatedDeal] = []
-    http_limit = asyncio.Semaphore(3)
-    # Shopify stores share infrastructure. Avoid concurrent feed bursts across
-    # domains even though their individual per-domain limits allow them.
-    shopify_limit = asyncio.Semaphore(1)
+    http_limit = asyncio.Semaphore(4)
+    shopify_limit = asyncio.Semaphore(2)
     browser_limit = asyncio.Semaphore(3)
 
     async def bounded_http(store, client):
         async with http_limit:
             if store.parser_type == "shopify":
                 async with shopify_limit:
-                    return await scrape_store(store, client, delay=delay, max_pages=max_pages, outcomes=outcomes)
-            return await scrape_store(store, client, delay=delay, max_pages=max_pages, outcomes=outcomes)
+                    return await asyncio.wait_for(
+                        scrape_store(store, client, delay=delay, max_pages=max_pages, outcomes=outcomes),
+                        timeout=STORE_TIMEOUT_SECONDS,
+                    )
+            return await asyncio.wait_for(
+                scrape_store(store, client, delay=delay, max_pages=max_pages, outcomes=outcomes),
+                timeout=STORE_TIMEOUT_SECONDS,
+            )
 
     async def bounded_browser(store):
         async with browser_limit:
-            return await scrape_store_browser(store, delay=delay, max_pages=max_pages, outcomes=outcomes)
+            return await asyncio.wait_for(
+                scrape_store_browser(store, delay=delay, max_pages=max_pages, outcomes=outcomes),
+                timeout=STORE_TIMEOUT_SECONDS,
+            )
 
-
-    # HTTP-based stores (Shopify JSON, BS4 HTML parsers)
-    if http_stores:
+    async def run_http() -> list[AggregatedDeal]:
+        if not http_stores:
+            return []
+        collected: list[AggregatedDeal] = []
         async with httpx.AsyncClient(
             headers=DEFAULT_HEADERS,
             follow_redirects=True,
             timeout=30.0,
         ) as client:
-            tasks = [
-                bounded_http(store, client)
-                for store in http_stores
-            ]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
+            results = await asyncio.gather(*(bounded_http(store, client) for store in http_stores), return_exceptions=True)
             for store, result in zip(http_stores, results):
                 if isinstance(result, Exception):
                     log.error("[%s] Scrape failed: %s", store.name, result)
                     if outcomes is not None:
                         outcomes.setdefault(store.name, {"errors": 0, "pages": 0})["errors"] += 1
                     result = []
-                if not result:
-                    log.warning("[%s] Returned zero deals; retrying once", store.name)
+                had_errors = bool((outcomes or {}).get(store.name, {}).get("errors"))
+                if not result and not had_errors:
+                    log.warning("[%s] Returned zero deals without HTTP errors; retrying once", store.name)
                     try:
-                        result = await scrape_store(store, client, delay=delay, max_pages=max_pages, outcomes=outcomes)
-                    except (httpx.HTTPError, ValueError, RuntimeError, OSError) as exc:
+                        result = await asyncio.wait_for(
+                            scrape_store(store, client, delay=delay, max_pages=max_pages, outcomes=outcomes),
+                            timeout=STORE_TIMEOUT_SECONDS,
+                        )
+                    except (TimeoutError, httpx.HTTPError, ValueError, RuntimeError, OSError) as exc:
                         log.error("[%s] Retry failed: %s", store.name, exc)
                         result = []
                 log.info("[%s] Completed: %d deals after filtering", store.name, len(result))
-                all_deals.extend(result)
+                collected.extend(result)
+        return collected
 
-    # Browser-based stores (Playwright)
-    if browser_stores:
-        browser_tasks = [
-            bounded_browser(store)
-            for store in browser_stores
-        ]
-        results = await asyncio.gather(*browser_tasks, return_exceptions=True)
-
+    async def run_browser() -> list[AggregatedDeal]:
+        if not browser_stores:
+            return []
+        collected: list[AggregatedDeal] = []
+        results = await asyncio.gather(*(bounded_browser(store) for store in browser_stores), return_exceptions=True)
         for store, result in zip(browser_stores, results):
             if isinstance(result, Exception):
                 log.error("[%s] Browser scrape failed: %s", store.name, result)
@@ -389,7 +402,12 @@ async def scrape_all(
                     outcomes.setdefault(store.name, {"errors": 0, "pages": 0})["errors"] += 1
             else:
                 log.info("[%s] Completed: %d deals after filtering", store.name, len(result))
-                all_deals.extend(result)
+                collected.extend(result)
+        return collected
+
+    http_deals, browser_deals = await asyncio.gather(run_http(), run_browser())
+    all_deals.extend(http_deals)
+    all_deals.extend(browser_deals)
 
     all_deals = list({d.url: d for d in all_deals}.values())
     report = build_scrape_report(all_deals, stores)

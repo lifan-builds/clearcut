@@ -11,7 +11,13 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit
 from bs4 import BeautifulSoup
 
 from deal_common.models import Product
-from deal_common.offers import VariantOffer
+from deal_common.offers import (
+    MAX_REFERENCE_PRICE,
+    VariantOffer,
+    is_addon_variant,
+    is_price_collapse_addon,
+    plausible_offer,
+)
 from deal_common.parsers.base import BaseParser
 
 log = logging.getLogger(__name__)
@@ -91,7 +97,18 @@ def shipping_notice(item: dict, variant: dict, url: str) -> str:
             if notice:
                 return "Retailer shipping notice: " + notice[0].strip()
     elif host == "harveywoodworking.com":
-        return _harvey_shipping_notice(item, variant)
+        notice = _harvey_shipping_notice(item, variant)
+        if notice:
+            return notice
+    if any(re.fullmatch(r"pre[- ]?order(?:ed|s)?|back[- ]?order(?:ed|s)?", tag, re.IGNORECASE)
+           for tag in _tags(item)):
+        return "Retailer marks this offer as pre-order or backorder."
+    values = [item.get("title"), variant.get("title"), variant.get("option1"), variant.get("option2"), variant.get("option3")]
+    if isinstance(variant.get("options"), list):
+        values.extend(variant["options"])
+    if any(isinstance(value, str) and re.search(r"\b(?:pre[- ]?order(?:ed|s)?|back[- ]?order(?:ed|s)?)\b", value, re.IGNORECASE)
+           for value in values):
+        return "Retailer marks this offer as pre-order or backorder."
     return ""
 
 
@@ -159,13 +176,24 @@ class ShopifyParser(BaseParser):
                 if isinstance(option, dict) and (
                     str(option.get("name", "")).strip().casefold() in self.size_option_names
                     if self.size_option_names
-                    else any(w in str(option.get("name", "")).lower() for w in ("size", "length"))
+                    else any(w in str(option.get("name", "")).lower() for w in ("size", "length", "mondo"))
                 )
             ]
             price_keys = {
                 f"option{index + 1}" for index, option in enumerate(options)
                 if isinstance(option, dict) and re.search(r"\b(msrp|retail|price)\b", str(option.get("name", "")), re.IGNORECASE)
             }
+            max_item_price = 0.0
+            for candidate in variants:
+                if not isinstance(candidate, dict) or is_contender_generated_variant(candidate, product_url):
+                    continue
+                for field in ("price", "compare_at_price"):
+                    try:
+                        amount = float(candidate.get(field) or 0)
+                    except (TypeError, ValueError):
+                        continue
+                    if math.isfinite(amount) and 0 < amount < MAX_REFERENCE_PRICE and amount > max_item_price:
+                        max_item_price = amount
             item_price_note = pricing_notice(item, product_url)
             offers = []
             for candidate in variants:
@@ -177,7 +205,13 @@ class ShopifyParser(BaseParser):
                     original = float(candidate.get("compare_at_price") or 0)
                 except (TypeError, ValueError):
                     continue
-                if not (math.isfinite(price) and math.isfinite(original) and 0 < price < original):
+                if not plausible_offer(price, original) or is_price_collapse_addon(original, max_item_price):
+                    continue
+                options_text = " / ".join(
+                    str(candidate[k]) for k in ("option1", "option2", "option3")
+                    if k not in price_keys and candidate.get(k) and candidate[k] != "Default Title"
+                )
+                if is_addon_variant(options_text):
                     continue
                 sizes = []
                 for key in option_keys or (() if options or self.size_option_names else ("option1", "option2", "option3")):
@@ -208,8 +242,7 @@ class ShopifyParser(BaseParser):
                     current_price=price,
                     original_price=original,
                     size=" / ".join(sizes) or None,
-                    options=" / ".join(str(candidate[k]) for k in ("option1", "option2", "option3")
-                                       if k not in price_keys and candidate.get(k) and candidate[k] != "Default Title"),
+                    options=options_text,
                     availability="in_stock" if candidate.get("available") is True and not notice else "unknown",
                     image_url=image,
                     availability_note=notice,
@@ -217,7 +250,8 @@ class ShopifyParser(BaseParser):
                 ))
             if not offers:
                 continue
-            best = min(offers, key=lambda o: (-o.discount_pct, o.current_price, o.variant_key))
+            best = min(offers, key=lambda o: (-o.discount_pct, -(o.original_price - o.current_price),
+                                              o.current_price, o.variant_key))
             price, original_price, image_url = best.current_price, best.original_price, best.image_url
             sizes = list(dict.fromkeys(o.size for o in offers if o.size and
                                        (o.current_price, o.original_price) == (price, original_price)))

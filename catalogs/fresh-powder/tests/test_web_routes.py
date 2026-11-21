@@ -225,7 +225,7 @@ def test_waitlist_failure_is_not_reported_as_success(isolated_app, monkeypatch):
 def test_failed_snow_refresh_cannot_make_health_look_current(isolated_app, monkeypatch):
     from datetime import datetime, timedelta
     now = datetime.now(UTC).replace(tzinfo=None)
-    old = (now - timedelta(hours=25)).isoformat()
+    old = (now - timedelta(hours=37)).isoformat()
     async def statuses():
         return [{"checked_at": old, "status": "ok", "deals": 10},
                 {"checked_at": now.isoformat(), "status": "unavailable", "deals": 0}]

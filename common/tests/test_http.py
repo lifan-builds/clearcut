@@ -85,3 +85,46 @@ def test_page_cap_and_failed_collection_do_not_discard_other_results():
 
     assert len(asyncio.run(run())) == 1
     assert len(requests) == 5
+
+
+def test_persistent_429_aborts_remaining_collections_on_same_store():
+    requests = []
+
+    def handle(request):
+        requests.append(request.url.path)
+        return httpx.Response(429, headers={"Retry-After": "20"})
+
+    async def run():
+        outcome = {"errors": 0, "pages": 0}
+        store = RetailerConfig(
+            "Throttled",
+            "example.com",
+            [
+                "https://example.com/collections/skis",
+                "https://example.com/collections/snowboards",
+                "https://example.com/collections/boots",
+            ],
+            shopify_products_limit=1,
+        )
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+            products = await fetch_products(
+                store, ShopifyParser(), client, semaphore=asyncio.Semaphore(1), delay=0, outcome=outcome
+            )
+        return products, outcome
+
+    async def fast_sleep(_):
+        pass
+
+    import deal_common.http as http_mod
+
+    orig_sleep = http_mod.asyncio.sleep
+    http_mod.asyncio.sleep = fast_sleep
+    try:
+        products, outcome = asyncio.run(run())
+    finally:
+        http_mod.asyncio.sleep = orig_sleep
+
+    assert products == []
+    assert len(requests) == 2
+    assert [c["status"] for c in outcome["collections"]] == ["http_error", "rate_limited", "rate_limited"]
+    assert outcome["errors"] == 3

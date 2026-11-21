@@ -39,44 +39,83 @@ def explicit_non_equipment_category(name: str) -> str | None:
     Title-only evidence also allows safe corrections to stored listings whose
     original retailer product type is no longer available.
     """
-    text = re.sub(r"[-_/]+", " ", unescape(name).lower())
+    raw = unescape(name).lower()
+    text = re.sub(r"[-_/]+", " ", raw)
+    primary_raw = re.split(r"(?:\s+\+\s+|\s+(?:with\b|w/\s*|including\b))", raw, maxsplit=1)[0]
+    primary = re.sub(r"[-_/]+", " ", primary_raw)
     if re.search(r"\bbody glove\b", text):
         return None  # Brand name, not a glove product noun.
-    if re.search(r"\b(?:gloves?|mittens?|mitts?)\b", text):
+    if re.search(r"\bglove (?:dryers?|warmers?|heaters?|leash(?:es)?)\b", primary):
+        return "accessories"
+    if re.search(r"\b(?:gloves?|mittens?|mitts?)\b", primary):
         return "gloves"
-    if (re.search(r"\bbalaclava\b", text)
-            and re.search(r"\b(?:hoodies?|hoody|pullover)\b", text)):
+    if (re.search(r"\bbalaclava\b", primary)
+            and re.search(r"\b(?:hoodies?|hoody|pullover)\b", primary)):
         return "layers"  # Includes tops with an integrated balaclava.
-    if re.search(r"\b(?:bags?|beanies?|balaclavas?|clava|scarves|scarf|socks?|ski straps?)\b", text):
+    # A replacement or standalone lens is not a whole goggle. Bundled bonus lenses stay goggles.
+    if re.search(
+        r"\b(?:(?:replacement|replaement|repl|rep|spare|extra)\s+(?:[\w\s]{0,25}\s+)?lens(?:es)?|"
+        r"goggles?\s+lens(?:es)?|lens(?:es)?\s+only|"
+        r"goggles?\s+(?:cases?|covers?|straps?|pouches?|socks?|shields?)|"
+        r"(?:replacement|spare)\s+(?:[\w\s]{0,20}\s+)?(?:visors?|ear\s*pads?|chin\s+bars?)|"
+        r"helmet\s+(?:covers?|visors?|ear\s*pads?|liners?|bags?))\b",
+        primary,
+    ):
         return "accessories"
-    # A replacement lens is not a whole goggle. Bundled bonus lenses stay goggles.
-    if re.search(r"\b(?:replacement|replaement|repl|rep) lens(?:es)?\b", text):
+    if re.search(
+        r"\b(?:bags?|beanies?|balaclavas?|clava|scarves|scarf|socks?|ski\s+straps?|"
+        r"backpacks?|daypacks?|duffels?|duffles?|"
+        r"(?:ski|snowboard|board|boot|gear|roller|wheeled|padded)\s+(?:packs?|cases?|sleeves?|sacks?|totes?|lockers?|rollers?|carriers?|racks?)|"
+        r"(?:wall|roof|hitch|car)\s+(?:mounts?|racks?|carriers?)|"
+        r"(?:ski|snowboard|board)\s+(?:leash(?:es)?|locks?|wall\s+mounts?)|cable\s+locks?|skicase)\b",
+        primary,
+    ):
         return "accessories"
-    if re.search(r"\b(?:pole baskets?|boot dryers?|insoles?|outsoles?|sidas cambrelle covers?)\b", text):
+    if re.search(
+        r"\b(?:pole\s+baskets?|(?:boot|shoe)\s+(?:dryers?|warmers?|heaters?|packs?|lockers?|caps?|horns?|bananas?)|"
+        r"insoles?|outsoles?|footbeds?|sidas\s+cambrelle\s+covers?|"
+        r"(?:toe|hand|foot)\s*warmers?|heat\s+elements|"
+        r"(?:gripwalk|vibram|din|heel(?:\s+and|\s+&\s+|\s+toe)?)\s+(?:pads?|soles?|kits?|blocks?)|"
+        r"alpine\s+soles?|"
+        r"(?:replacement|spare)\s+(?:[\w\s]{0,20}\s+)?(?:buckles?|straps?|soles?|pads?|liners?|ratchets?|ladders?|highbacks?|tongues?|baskets?|tips?|brakes?)|"
+        r"(?:buckle|strap)\s+kits?|(?:power|booster|ankle|toe)\s+straps?|"
+        r"(?:ski|binding|touring|powerrail|freeski)\s+brakes?|brake\s+(?:kits?|retainers?)|"
+        r"(?:splitboard|canted|voile|binding|touring)\s+pucks?|"
+        r"(?:mounting|channel|universal|binding|interface|adapter)\s+(?:dis[ck]s?|plates?|hardware|screws?)|"
+        r"spare\s+parts|tip\s+loops?|freeride\s+spacers?|crampons?|snowshoes?|"
+        r"hardshell\s+helmet\s+top|hardshell\s+top\s+helmet|"
+        r"suspenders|torque\s+drivers?|"
+        r"(?:ski|snowboard|glide|rub\s+on|hot|universal|liquid|all\s+temp|hydrocarbon)\s+wax(?:es)?|"
+        r"wax(?:ing)?\s+(?:irons?|kits?|scrapers?|brushes?|tables?|vises?|blocks?|removers?)|"
+        r"(?:ski|snowboard|board|tuning|edge|wax)\s+(?:scrapers?|brushes?|vises?|irons?|tuners?|files?|stones?)|"
+        r"tuning\s+kits?|edge\s+tools?|sidewall\s+planers?|p\s*tex|base\s+cleaners?|"
+        r"gummy\s+stones?|diamond\s+stones?|roto\s+brush(?:es)?)\b",
+        primary,
+    ):
         return "accessories"
-    if re.search(r"\b(?:backpacks?|boot (?:pack|locker|caps?)|footbeds?|helmet covers?|hardshell helmet top|hardshell top helmet|ski (?:leash|lock)|snowboard leash|climbing skins?|splitboard skins?|tip loop|spare parts|universal dis[ck]|heat elements|skicase|freeride spacer|alpine sole|toe warmers?|crampons?|snowshoes?|suspenders|cable lock|torque driver)\b", text):
+    if re.search(r"\bskins\b", primary) and not re.search(r"\b(?:sno\s+skins|shirt)\b", primary):
         return "accessories"
-    if re.search(r"\b(?:skins|tool|straps|headwear|neckwear|earband|ubertube|hijab|sox)\b", text) and not re.search(r"\b(?:sno skins|shirt|ski\b|skis\b)\b", text):
+    if re.search(r"\b(?:tool|straps|headwear|neckwear|earband|ubertube|hijab|sox)\b", primary) and not re.search(r"\b(?:shirt|ski\b|skis\b)\b", primary):
         return 'accessories'
-    if re.search(r"\bliners?\b", text) and not re.search(r"\bboots?\b", text):
+    if re.search(r"\bliners?\b", primary) and not re.search(r"\bboots?\b", primary):
         return "accessories"
     if re.search(r"\b(?:marker alu pro plate|marker wc pc interface|storm.*(?:spray|care kit)|montana splitclamp)\b", text):
         return 'accessories'
-    if re.search(r"\b(?:pants?|bibs?|sweatpants?)\b", text):
+    if re.search(r"\b(?:pants?|bibs?|sweatpants?)\b", primary):
         return "pants"
-    if re.search(r"\b(?:jackets?|parkas?|anoraks?|coats?)\b", text):
+    if re.search(r"\b(?:jackets?|parkas?|anoraks?|coats?)\b", primary):
         return "jackets"
-    if re.search(r"\b(?:capilene|baselayers?|base layers?|midlayers?|mid layers?|fleece|hoodies?|hoody|sweatshirts?|crewneck|crew neck|leggings?)\b", text):
+    if re.search(r"\b(?:capilene|baselayers?|base layers?|midlayers?|mid layers?|fleece|hoodies?|hoody|sweatshirts?|crewneck|crew neck|leggings?)\b", primary):
         return "layers"
-    if re.search(r"\b(?:zip top|thermal (?:crew|top)|rollneck|t neck|lifa active crew|peachskin crew)\b", text):
+    if re.search(r"\b(?:zip top|thermal (?:crew|top)|rollneck|t neck|lifa active crew|peachskin crew)\b", primary):
         return "layers"
-    if re.search(r'\b(?:crew top|lounge top|funnel neck top|knit top|sherpa|moonridge crew|dayshift crew|conduit crew)\b', text):
+    if re.search(r'\b(?:crew top|lounge top|funnel neck top|knit top|sherpa|moonridge crew|dayshift crew|conduit crew)\b', primary):
         return 'layers'
-    if re.search(r'\b(?:poncho|shawl|knit wrap|fur collar)\b', text):
+    if re.search(r'\b(?:poncho|shawl|knit wrap|fur collar)\b', primary):
         return 'accessories'
-    if re.search(r"\b(?:snowsuit|snow suit|ski suit|beast suit|murphy suit|absolute zero suit)\b", text):
+    if re.search(r"\b(?:snowsuit|snow suit|ski suit|beast suit|murphy suit|absolute zero suit)\b", primary):
         return "jackets"
-    if re.search(r"\b(?:gaitor|necktube|neckband|earwarmers?|earband|airhood|wristguard|skin skins|ski skins|snowboard skins)\b", text):
+    if re.search(r"\b(?:gaitor|necktube|neckband|earwarmers?|earband|airhood|wristguard|skin skins|ski skins|snowboard skins)\b", primary):
         return "accessories"
     return None
 
@@ -88,10 +127,16 @@ def category_from_product_type(product_type: str) -> str | None:
         return None
     if re.search(r" - (?:ski )?poles$", product_type.lower()):
         return 'poles'
-    if re.search(r'\b(?:goggles|helmets)\b', text) and not re.search(r'\b(?:lens|lenses|bags?|covers?|parts)\b', text):
+    if re.search(r'\b(?:goggles|helmets)\b', text) and not re.search(r'\b(?:lens|lenses|visors?|bags?|covers?|parts|straps?)\b', text):
         return 'helmets' if 'helmet' in text else 'goggles'
     # Retailers sometimes concatenate parents: "Ski Poles - Bindings - Binding".
-    if re.search(r"\b(?:accessor(?:y|ies)|skins|tuning|headwear|neckwear|socks?|headbands?|beanies?|travel|snow safety|bags?|packs?|hats|belts|suspenders|tools|parts|scrapers)\b", text):
+    if re.search(
+        r"\b(?:accessor(?:y|ies)|skins|tuning|headwear|neckwear|socks?|headbands?|beanies?|"
+        r"travel|snow safety|bags?|packs?|hats|belts|suspenders|tools|parts|scrapers|"
+        r"lens|lenses|visors?|brakes?|pucks?|straps?|buckles?|crampons?|"
+        r"warmers?|dryers?|heaters?|racks?|carriers?|mounts?|locks?|leashes?|wax)\b",
+        text,
+    ):
         return "accessories"
     if 'winter boot' in text or 'snow boot' in text:
         return 'winter boots'
@@ -139,6 +184,19 @@ def is_excluded(name: str, url: str = "") -> bool:
         return True
     if re.search(r'\b(?:hiking boot|boxers?|awning|freedom slides|reef one slide|little rio slide|puffy slide|sport flex slide)\b', text):
         return True
+    if re.search(
+        r"\b(?:gift\s+cards?|gift\s+certificates?|gift\s+vouchers?|store\s+credit|"
+        r"(?:shipping|package|order|return|damage)\s+(?:protection|insurance|assurance)|"
+        r"navidium|route\s+protection|extend\s+protection|(?:extended|accident)\s+warrant(?:y|ies)|"
+        r"warrant(?:y|ies)\s+plans?|protection\s+plans?|"
+        r"(?:mounting|tuning|waxing|sharpening|grinding|repair|binding\s+mount)\s+(?:services?|fees?|charges?|labor)|"
+        r"(?:ski|snowboard)\s+(?:tune(?:\s+ups?)?|wax|mount(?:ing)?)\s+services?|"
+        r"(?:full|basic|minor|major)\s+(?:ski|snowboard|board)\s+tunes?|"
+        r"season\s+(?:(?:ski|snowboard|board|gear)\s+)?(?:leases?|rentals?)|(?:ski|snowboard|daily)\s+rentals?|"
+        r"(?:reservation|pre\s*order)\s+deposits?)\b",
+        text,
+    ):
+        return True
     for kw, pattern in _EXCLUSION_PATTERNS:
         # These brands also make genuine snowboard boots.
         if kw in {"vans", "adidas"} and re.search(r"\bsnowboard boots?\b", text):
@@ -151,9 +209,19 @@ def is_excluded(name: str, url: str = "") -> bool:
 def exclusion_reason(name: str, url: str = '', product_type: str = '') -> str | None:
     text = f'{name} {product_type}'
     condition_text = re.sub(r'[-_/]+', ' ', f'{text} {_url_path(url)}')
-    if re.search(r'\b(?:blem|blemished|blemish)\b', condition_text, re.IGNORECASE):
+    if re.search(
+        r'\b(?:blem|blemished|blemish|open\s+box|factory\s+seconds?|cosmetic\s+seconds?|'
+        r'ex\s+demo|ex\s+rental|rental\s+fleet|demo\s+fleet)\b',
+        condition_text,
+        re.IGNORECASE,
+    ):
         return 'condition'
-    if re.search(r'\b(?:juniors?|jrs?|kids?|youth|toddlers?|baby|boys?|girls?|infants?|child|children|grom|teens?)\b', text, re.IGNORECASE):
+    if re.search(
+        r'\b(?:juniors?|jrs?|kids?|youths?|toddlers?|baby|boys?|girls?|infants?|'
+        r'child|children|groms?|teens?|minishred)\b',
+        text,
+        re.IGNORECASE,
+    ):
         return 'children'
     if is_excluded(text, url):
         return 'non-snow'

@@ -1,4 +1,5 @@
 """Server-rendered catalog app with read-only snapshots and validated filters."""
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlencode
@@ -25,6 +26,12 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
     templates = Jinja2Templates(directory=ASSETS / "templates")
     base_url = public_url.rstrip("/") if public_url else None
     templates.env.globals["public_url"] = base_url
+    templates.env.globals["network_urls"] = lambda: {
+        "hub": os.environ.get("CLEARCUT_HUB_URL", "https://clearcut.clifan.com").rstrip("/"),
+        "snow": os.environ.get("SNOW_SITE_URL", "https://freshpowder.clifan.com").rstrip("/"),
+        "cycling": os.environ.get("CYCLING_SITE_URL", "https://bigring.clifan.com").rstrip("/"),
+        "tools": os.environ.get("TOOLS_SITE_URL", "https://benchdrop.clifan.com").rstrip("/"),
+    }
     templates.env.filters["money"] = lambda value: f"${value:,.2f}" if value % 1 else f"${value:,.0f}"
     templates.env.filters["date"] = (
         lambda value: datetime.fromisoformat(value).strftime("%b %d, %H:%M UTC") if value else "Not yet refreshed"

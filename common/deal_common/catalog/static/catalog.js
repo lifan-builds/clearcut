@@ -26,7 +26,12 @@
       const chip = document.createElement("span"); chip.className = "saved-item";
       const link = document.createElement("a");
       link.href = `/?${safeQuery(item.query)}#deals`; link.textContent = item.label;
-      const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "×";
+      const remove = document.createElement("button"); remove.type = "button";
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 16 16"); svg.setAttribute("width", "13"); svg.setAttribute("height", "13"); svg.setAttribute("aria-hidden", "true");
+      const path = document.createElementNS(svg.namespaceURI, "path");
+      path.setAttribute("d", "m4 4 8 8M12 4l-8 8"); path.setAttribute("stroke", "currentColor"); path.setAttribute("stroke-width", "1.7"); path.setAttribute("fill", "none");
+      svg.append(path); remove.append(svg);
       remove.setAttribute("aria-label", `Remove saved search: ${item.label}`);
       remove.addEventListener("click", () => { saved.splice(index, 1); persist(); render(); });
       chip.append(link, remove); container.append(chip);

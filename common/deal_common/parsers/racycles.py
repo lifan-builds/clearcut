@@ -365,7 +365,8 @@ class RacyclesShopifyParser(ShopifyParser):
                                   availability_note=row['shipping_note']))
         if not offers:
             return []
-        best = min(offers, key=lambda o: (-o.discount_pct, o.current_price, o.variant_key))
+        best = min(offers, key=lambda o: (-o.discount_pct, -(o.original_price - o.current_price),
+                                          o.current_price, o.variant_key))
         sizes = list(dict.fromkeys(o.size for o in offers if o.size
                                    and (o.current_price, o.original_price) == (best.current_price, best.original_price)))
         return [replace(product, current_price=best.current_price, original_price=best.original_price,

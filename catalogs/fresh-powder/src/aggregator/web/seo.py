@@ -49,6 +49,15 @@ def site_url() -> str:
     return os.environ.get("SITE_URL", "https://freshpowder.clifan.com").rstrip("/")
 
 
+def network_urls() -> dict[str, str]:
+    return {
+        "hub": os.environ.get("CLEARCUT_HUB_URL", "https://clearcut.clifan.com").rstrip("/"),
+        "snow": site_url(),
+        "cycling": os.environ.get("CYCLING_SITE_URL", "https://bigring.clifan.com").rstrip("/"),
+        "tools": os.environ.get("TOOLS_SITE_URL", "https://benchdrop.clifan.com").rstrip("/"),
+    }
+
+
 def page_context(request) -> dict:
     path = request.url.path
     private = path.startswith(("/admin", "/invite", "/alerts/remove", "/deals"))
@@ -67,3 +76,4 @@ def page_context(request) -> dict:
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR), context_processors=[page_context])
 templates.env.auto_reload = True
 templates.env.globals["comparison_path"] = comparison_path
+templates.env.globals["network_urls"] = network_urls

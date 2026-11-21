@@ -10,7 +10,11 @@ import httpx
 from deal_common.catalog.definition import Catalog, manufacturer_name
 from deal_common.catalog.storage import save_source
 from deal_common.http import DEFAULT_HEADERS, fetch_products
-from deal_common.offers import discount
+from deal_common.offers import (
+    is_addon_variant,
+    is_price_collapse_addon,
+    plausible_offer,
+)
 from deal_common.parsers.beaver import BeaverShopifyParser
 from deal_common.parsers.bikecloset import BikeClosetParser
 from deal_common.parsers.bikecloset import offer_destination as bikecloset_destination
@@ -52,7 +56,8 @@ def normalize(products, catalog: Catalog, domain: str, *, parser_type: str = "sh
         offers = []
         for offer in product.offers:
             if (offer.availability not in {"in_stock", "unknown"}
-                    or discount(offer.current_price, offer.original_price) <= 0
+                    or not plausible_offer(offer.current_price, offer.original_price)
+                    or is_addon_variant(offer.options)
                     or not safe_url(offer.url, domain)
                     or urlsplit(offer.url).path != urlsplit(product.url).path
                     or not validate_destination(offer.url, offer.variant_key)):
@@ -60,6 +65,8 @@ def normalize(products, catalog: Catalog, domain: str, *, parser_type: str = "sh
             data = asdict(offer)
             data["image_url"] = offer.image_url if safe_url(offer.image_url) else None
             offers.append(data)
+        max_reference = max((o["original_price"] for o in offers), default=0.0)
+        offers = [o for o in offers if not is_price_collapse_addon(o["original_price"], max_reference)]
         if not offers:
             continue
         result[product.url] = {
@@ -88,23 +95,39 @@ def _build_parser(source, catalog: Catalog):
 
 
 async def refresh(catalog: Catalog, path: Path, *, max_pages: int = 30,
-                  delay: float = 1.5, transport=None) -> list[dict]:
-    reports = []
+                  delay: float = 1.5, concurrency: int = 3, transport=None) -> list[dict]:
+    for source in catalog.sources:
+        if source.currency != "USD":
+            raise ValueError("These catalogs accept USD sources only")
+
+    source_gate = asyncio.Semaphore(max(1, concurrency))
+    db_lock = asyncio.Lock()
+
     async with httpx.AsyncClient(headers=DEFAULT_HEADERS, timeout=30, follow_redirects=True,
                                  transport=transport) as client:
-        for source in catalog.sources:
-            outcome = {"errors": 0, "pages": 0}
-            observed_at = datetime.now(UTC).isoformat()
-            if source.currency != "USD":
-                raise ValueError("These catalogs accept USD sources only")
-            parser = _build_parser(source, catalog)
-            products = await fetch_products(source, parser, client,
-                                            semaphore=asyncio.Semaphore(1), delay=delay,
-                                            max_pages=max_pages, outcome=outcome,
-                                            include_product=lambda product: catalog.classify(product) is not None)
-            normalized = normalize(products, catalog, source.domain, parser_type=source.parser_type)
-            status = "complete" if outcome["errors"] == 0 and outcome.get("collections") else "incomplete"
-            outcome.update(parsed_products=len(products), accepted_products=len(normalized))
-            save_source(path, catalog.slug, source.name, observed_at, normalized, status, outcome)
-            reports.append({"source": source.name, "status": status, **outcome})
-    return reports
+        async def refresh_one(source) -> dict:
+            async with source_gate:
+                outcome = {"errors": 0, "pages": 0}
+                observed_at = datetime.now(UTC).isoformat()
+                parser = _build_parser(source, catalog)
+                try:
+                    products = await asyncio.wait_for(
+                        fetch_products(
+                            source, parser, client,
+                            semaphore=asyncio.Semaphore(1), delay=delay,
+                            max_pages=max_pages, outcome=outcome,
+                            include_product=lambda product: catalog.classify(product) is not None,
+                        ),
+                        timeout=600.0,
+                    )
+                except TimeoutError:
+                    products = []
+                    outcome["errors"] += 1
+                normalized = normalize(products, catalog, source.domain, parser_type=source.parser_type)
+                status = "complete" if outcome["errors"] == 0 and outcome.get("collections") else "incomplete"
+                outcome.update(parsed_products=len(products), accepted_products=len(normalized))
+                async with db_lock:
+                    save_source(path, catalog.slug, source.name, observed_at, normalized, status, outcome)
+                return {"source": source.name, "status": status, **outcome}
+
+        return list(await asyncio.gather(*(refresh_one(source) for source in catalog.sources)))

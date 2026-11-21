@@ -1,1 +1,13 @@
-:root { --ink: #163d32; --accent: #d4f560; --hero: #163d32; }
+/* Edition 02 — Big Ring (Road, Gravel & Mountain Cycling) */
+:root {
+  --ink: #0e241b;
+  --ink-secondary: #264336;
+  --accent: #cef255;
+  --accent-ink: #0e241b;
+  --paper: #eff3ec;
+  --well: #f4f7f1;
+  --panel: #e2ebe0;
+  --hero-scrim-a: rgba(8, 24, 18, 0.9);
+  --hero-scrim-b: rgba(8, 24, 18, 0.58);
+  --hero-scrim-c: rgba(8, 24, 18, 0.12);
+}

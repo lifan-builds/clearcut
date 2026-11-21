@@ -51,7 +51,7 @@ async def fetch_listing(client: httpx.AsyncClient, url: str, delay: float,
                     seconds = (parsedate_to_datetime(retry_after) - datetime.now(UTC)).total_seconds()
                 except (ValueError, TypeError):
                     seconds = 2 ** (attempt + 2) + random.random()
-            if seconds > 60:
+            if seconds > 60 or (seconds > 15 and attempt >= 1):
                 response.raise_for_status()
             await asyncio.sleep(max(0, seconds))
         except httpx.TransportError:
@@ -85,12 +85,17 @@ async def fetch_products(store: RetailerConfig, parser: BaseParser, client: http
         outcome = {"errors": 0, "pages": 0}
     products: list[Product] = []
     details_seen: set[str] = set()
+    domain_rate_limited = False
 
     for url in store.scrape_urls:
         page = 0
         seen_pages: set[str] = set()
         collection = {"url": url, "pages": 0, "products": 0, "status": "complete"}
         outcome.setdefault("collections", []).append(collection)
+        if domain_rate_limited:
+            outcome["errors"] += 1
+            collection.update(status="rate_limited", http_status=429)
+            continue
         if store.parser_type == "shopify" and store.verify_shopify_currency:
             try:
                 storefront = await fetch_listing(client, url, delay)
@@ -131,6 +136,8 @@ async def fetch_products(store: RetailerConfig, parser: BaseParser, client: http
                     collection["status"] = "http_error"
                     if isinstance(exc, httpx.HTTPStatusError):
                         collection["http_status"] = exc.response.status_code
+                        if exc.response.status_code == 429:
+                            domain_rate_limited = True
                     log.error("[%s] HTTP error: %s", store.name, exc)
                     break
 
