@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import os
 import sqlite3
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
 
@@ -131,6 +131,45 @@ async def ensure_deals_db_ready(db_path: Path = DB_PATH) -> None:
             ) from exc
 
 
+async def _prune_observation_bloat(db: aiosqlite.Connection, *, now: datetime | None = None) -> None:
+    anchor = (now or datetime.now(UTC).replace(tzinfo=None))
+    recent_cutoff = (anchor - timedelta(hours=48)).isoformat()
+    obs_cutoff = (anchor - timedelta(days=14)).isoformat()
+    hist_cutoff = (anchor - timedelta(days=180)).isoformat()
+
+    await db.execute("DELETE FROM offer_observations WHERE observed_at < ?", (obs_cutoff,))
+    await db.execute(
+        """
+        DELETE FROM offer_observations
+        WHERE observed_at < ?
+          AND rowid NOT IN (
+              SELECT MAX(rowid) FROM offer_observations
+              WHERE observed_at < ?
+              GROUP BY product_url, variant_key
+          )
+        """,
+        (recent_cutoff, recent_cutoff),
+    )
+    await db.execute("DELETE FROM price_history WHERE observed_at < ?", (hist_cutoff,))
+    await db.execute(
+        """
+        DELETE FROM price_history
+        WHERE observed_at < ?
+          AND rowid NOT IN (
+              SELECT MIN(rowid) FROM (
+                  SELECT rowid, url, substr(observed_at, 1, 10) AS obs_day, price,
+                         MIN(price) OVER (PARTITION BY url, substr(observed_at, 1, 10)) AS day_min
+                  FROM price_history
+                  WHERE observed_at < ?
+              )
+              WHERE price = day_min
+              GROUP BY url, obs_day
+          )
+        """,
+        (recent_cutoff, recent_cutoff),
+    )
+
+
 async def repair_deal_categories(db_path: Path) -> int:
     """Reclassify the downloaded snapshot while preserving price evidence and age."""
     from aggregator.categorizer import categorize, exclusion_reason
@@ -153,6 +192,7 @@ async def repair_deal_categories(db_path: Path) -> int:
         )
         await db.executemany("DELETE FROM deal_reviews WHERE deal_id = ?",
                              [(row[-1],) for row in corrections])
+        await _prune_observation_bloat(db)
         await db.commit()
     return len(corrections)
 
@@ -236,6 +276,7 @@ async def upsert_deals(deals: list[AggregatedDeal], db_path: Path = DB_PATH) -> 
             d.currency = currency
             await write_offers(db, d)
             count += 1
+        await _prune_observation_bloat(db)
         await db.commit()
     return count
 

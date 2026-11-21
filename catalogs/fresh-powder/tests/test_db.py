@@ -189,3 +189,47 @@ def test_default_ranking_puts_deepest_discount_before_image_availability(tmp_pat
         assert rows[0].image_url is None
 
     asyncio.run(run())
+
+
+def test_observation_bloat_pruning_keeps_daily_lows_and_recent_variant_baseline(tmp_path):
+    from datetime import UTC, timedelta
+
+    import aiosqlite
+    from aggregator.db import repair_deal_categories
+
+    async def run():
+        path = tmp_path / "bloat.db"
+        await init_db(path)
+        now = datetime.now(UTC).replace(tzinfo=None)
+        day_five = (now - timedelta(days=5)).replace(hour=8, minute=0, second=0, microsecond=0)
+        expired = now - timedelta(days=200)
+        async with aiosqlite.connect(path) as conn:
+            await conn.executemany(
+                "INSERT INTO price_history VALUES (?, ?, ?)",
+                [
+                    ("https://example.com/ski", expired.isoformat(), 199.0),
+                    ("https://example.com/ski", day_five.isoformat(), 450.0),
+                    ("https://example.com/ski", (day_five + timedelta(hours=6)).isoformat(), 399.0),
+                    ("https://example.com/ski", (now - timedelta(hours=2)).isoformat(), 379.0),
+                    ("https://example.com/ski", now.isoformat(), 349.0),
+                ],
+            )
+            await conn.executemany(
+                "INSERT INTO offer_observations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    ("https://example.com/ski", "v1", (now - timedelta(days=30)).isoformat(), 500, 800, "USD", "in_stock", "retailer_reference", "Ski"),
+                    ("https://example.com/ski", "v1", day_five.isoformat(), 450, 800, "USD", "in_stock", "retailer_reference", "Ski"),
+                    ("https://example.com/ski", "v1", (day_five + timedelta(hours=6)).isoformat(), 420, 800, "USD", "in_stock", "retailer_reference", "Ski"),
+                    ("https://example.com/ski", "v1", now.isoformat(), 349, 800, "USD", "in_stock", "retailer_reference", "Ski"),
+                ],
+            )
+            await conn.commit()
+
+        await repair_deal_categories(path)
+        async with aiosqlite.connect(path) as conn:
+            hist = await (await conn.execute("SELECT price FROM price_history ORDER BY observed_at")).fetchall()
+            obs = await (await conn.execute("SELECT price FROM offer_observations ORDER BY observed_at")).fetchall()
+        assert [r[0] for r in hist] == [399.0, 379.0, 349.0]
+        assert [r[0] for r in obs] == [420.0, 349.0]
+
+    asyncio.run(run())
