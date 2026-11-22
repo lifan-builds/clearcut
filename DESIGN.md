@@ -18,4 +18,5 @@ Clearcut uses an **Expedition Monograph & Panoramic Field Portfolio** language a
 
 - **Radii:** `24px` panoramic heroes and monolith plates, `20px` command consoles and gallery deal cards, `11px` inputs, `999px` dock pills, discount stamps, and store CTAs.
 - **Motion:** Single spring curve (`cubic-bezier(0.22, 1, 0.36, 1)`); full `prefers-reduced-motion: reduce` support.
-- **Assets:** Repository-owned, text-free high-resolution plates with embedded generation provenance (`common/deal_common/portal/static/img/*-card.jpg` and per-catalog `*-banner.jpg`).
+- **Assets:** Repository-owned, text-free 2D hand-painted Japanese anime cel & gouache background plates (`common/deal_common/portal/static/img/*-card.jpg` and per-catalog `*-banner.jpg`) with embedded generation provenance.
+- **Navigation & Search:** Single top-right header pill search input across all five sub-sites, with post-search category pills and a collapsible `Filters & size` drawer directly above results.

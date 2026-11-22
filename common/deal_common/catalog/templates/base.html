@@ -11,9 +11,9 @@
   {% if public_url %}<link rel="canonical" href="{{ public_url }}{{ request.url.path }}"><meta property="og:url" content="{{ public_url }}{{ request.url.path }}">{% endif %}
   <meta name="theme-color" content="{{ catalog.theme_color }}">
   <title>{% block title %}{{ catalog.name }} · Deep discounts, serious gear{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', path='catalog.css') }}?v=8">
-  <link rel="stylesheet" href="{{ url_for('brand', path='brand.css') }}?v=5">
-  <script src="{{ url_for('static', path='catalog.js') }}?v=5" defer></script>
+  <link rel="stylesheet" href="{{ url_for('static', path='catalog.css') }}?v=10">
+  <link rel="stylesheet" href="{{ url_for('brand', path='brand.css') }}?v=6">
+  <script src="{{ url_for('static', path='catalog.js') }}?v=6" defer></script>
 </head>
 <body id="top" class="{{ catalog.slug }}" data-catalog="{{ catalog.slug }}" data-locker-param="{{ 'platform' if catalog.formats else 'size' }}">
   <a class="skip" href="#main">Skip to content</a>
@@ -44,10 +44,17 @@
         <a class="dock-pill{% if catalog.slug == 'watersports' %} is-current{% endif %}" href="{{ net.watersports }}/" {% if catalog.slug == 'watersports' %}aria-current="page"{% endif %}><span class="dock-idx">05</span>Water</a>
       </nav>
 
-      <nav class="utility-nav" aria-label="Main">
+      <div class="utility-nav">
+        <form class="top-search" action="/#deals" method="get" role="search">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
+          <input type="search" name="q" value="{{ filters.q if filters is defined else '' }}" placeholder="Search {{ catalog.name }}…" maxlength="150" aria-label="Search {{ catalog.name }}">
+          {% if filters is defined %}
+          {% for k in ['category', 'brand', 'store', 'size', 'format', 'platform'] %}{% if filters.get(k) %}<input type="hidden" name="{{ k }}" value="{{ filters[k] }}">{% endif %}{% endfor %}
+          {% endif %}
+        </form>
         <button type="button" class="locker-trigger" id="locker-trigger" hidden></button>
-        <a class="nav-pill" href="/sources">Tracked shops</a>
-      </nav>
+        <a class="nav-pill" href="/sources">Shops</a>
+      </div>
     </div>
   </header>
 

@@ -177,6 +177,8 @@ CATALOG = Catalog(
         ),
         _shopify("Ari Bikes", "aribikes.com", "outlet"),
         _shopify("Thunder Mountain Bikes", "thundermountainbikes.com", "bikes-on-sale", "wheels"),
+        _shopify("Spot Bikes", "spotbikes.com", "outlet", "outlet-bikes", "bikes"),
+        _shopify("Evil Bikes", "www.evil-bikes.com", "bikes"),
         _shopify("Gravity Coalition", "gravitycoalition.com", "all-bikes-frames", "bike-sale"),
         _shopify("Bicycle Warehouse", "bicyclewarehouse.com", "bikes-on-sale"),
         _shopify("BikesOnline", "bikesonline.com", "sale"),

@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% set banner_map = {'cycling': 'img/cycling-banner.jpg', 'tools': 'img/tools-banner.jpg', 'camp': 'img/camp-banner.jpg', 'watersports': 'img/water-banner.jpg'} %}
 {% set banner_img = banner_map.get(catalog.slug, 'img/cycling-banner.jpg') %}
+{% set has_drawer_filter = filters.brand or filters.store or filters.size or filters.platform or filters.format or filters.max_price or filters.min_discount or filters.stock %}
 {% block content %}
 <section class="world-hero-wrap">
   <div class="world-hero">
@@ -18,88 +19,92 @@
 </section>
 
 <section id="deals" class="deal-section">
-  <form action="/#deals" method="get" id="filters" class="command-console">
-    <div class="command-primary">
-      <label class="cmd-search">
-        <span>Search</span>
-        <div class="cmd-search-box">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
-          <input type="search" name="q" value="{{ filters.q }}" placeholder="Search brand, model, or keyword" maxlength="150">
-        </div>
-      </label>
+  <div class="post-search-bar">
+    <nav class="quick-cats" aria-label="Quick category filter">
+      <a class="cat-chip{% if not filters.category %} is-active{% endif %}" href="/{% if filters.q %}?q={{ filters.q|urlencode }}{% endif %}#deals">All</a>
+      {% for value in catalog.categories %}
+      <a class="cat-chip{% if filters.category == value %} is-active{% endif %}" href="/?category={{ value|urlencode }}{% if filters.q %}&amp;q={{ filters.q|urlencode }}{% endif %}#deals">{{ value }}</a>
+      {% endfor %}
+    </nav>
 
-      <label>
-        <span>Category</span>
-        <select name="category">
-          <option value="">All categories</option>
-          {% for value in catalog.categories %}
-          <option {% if filters.category == value %}selected{% endif %}>{{ value }}</option>
-          {% endfor %}
-        </select>
-      </label>
+    <details class="filter-panel"{% if has_drawer_filter %} open{% endif %}>
+      <summary class="filter-toggle-pill">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M2 4h12M4.5 8h7M6.5 12h3"/></svg>
+        <span>Filters &amp; {{ 'platform' if catalog.formats else catalog.size_label|lower }}</span>
+        <svg class="filter-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+      </summary>
 
-      {% if catalog.formats %}
-      {% if result.facets['platform'] or filters['platform'] %}
-      <label>
-        <span>Battery platform</span>
-        <select name="platform">
-          <option value="">All battery platforms</option>
-          {% for value in result.facets['platform'] %}<option {% if filters['platform'] == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
-          {% if filters['platform'] and filters['platform'] not in result.facets['platform'] %}<option selected>{{ filters['platform'] }}</option>{% endif %}
-        </select>
-      </label>
-      {% endif %}
-      {% elif result.facets['size'] or filters['size'] %}
-      <label>
-        <span>{{ catalog.size_label }}</span>
-        <select name="size">
-          <option value="">All {{ catalog.size_label|lower }}s</option>
-          {% for value in result.facets['size'] %}<option {% if filters['size'] == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
-          {% if filters['size'] and filters['size'] not in result.facets['size'] %}<option selected>{{ filters['size'] }}</option>{% endif %}
-        </select>
-      </label>
-      {% endif %}
+      <form action="/#deals" method="get" id="filters" class="filter-drawer-box">
+        <input type="hidden" name="q" value="{{ filters.q }}">
+        <div class="drawer-grid">
+          <label>
+            <span>Category</span>
+            <select name="category">
+              <option value="">All categories</option>
+              {% for value in catalog.categories %}
+              <option {% if filters.category == value %}selected{% endif %}>{{ value }}</option>
+              {% endfor %}
+            </select>
+          </label>
 
-      <label>
-        <span>Original price</span>
-        <select name="min_reference">
-          {% for value in [0, 100, 200, 500, 1000, 2000, 5000] %}
-          <option value="{{ value }}" {% if filters.min_reference == value %}selected{% endif %}>{{ value|money }}{% if value == 0 %} · any{% else %}+{% endif %}</option>
-          {% endfor %}
-          {% if filters.min_reference not in [0,100,200,500,1000,2000,5000] %}
-          <option value="{{ filters.min_reference }}" selected>{{ filters.min_reference|money }}+</option>
+          {% if result.facets['size'] or filters['size'] %}
+          <label>
+            <span>{{ catalog.size_label }}</span>
+            <select name="size">
+              <option value="">All {{ catalog.size_label|lower }}s</option>
+              {% for value in result.facets['size'] %}<option {% if filters['size'] == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+              {% if filters['size'] and filters['size'] not in result.facets['size'] %}<option selected>{{ filters['size'] }}</option>{% endif %}
+            </select>
+          </label>
           {% endif %}
-        </select>
-      </label>
 
-      <button type="submit" class="primary-button">
-        <span>Find deals</span>
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3.5 8h9M8.5 4l4 4-4 4"/></svg>
-      </button>
-    </div>
+          {% if catalog.formats %}
+          {% if result.facets['platform'] or filters['platform'] %}
+          <label>
+            <span>Battery platform</span>
+            <select name="platform">
+              <option value="">All battery platforms</option>
+              {% for value in result.facets['platform'] %}<option {% if filters['platform'] == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+              {% if filters['platform'] and filters['platform'] not in result.facets['platform'] %}<option selected>{{ filters['platform'] }}</option>{% endif %}
+            </select>
+          </label>
+          {% endif %}
+          <label>
+            <span>Package</span>
+            <select name="format">
+              <option value="">All packages</option>
+              {% for value in catalog.formats %}<option {% if filters.format == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+            </select>
+          </label>
+          {% endif %}
 
-    <details class="filter-panel">
-      <summary><span>More filters &amp; budget</span><svg class="filter-chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
-      <div class="drawer-grid">
-        {% for key, label in [('brand', 'Brand'), ('store', 'Retailer')] %}
-        <label>{{ label }}<select name="{{ key }}"><option value="">All {{ label|lower }}s</option>{% for value in result.facets[key] %}<option {% if filters[key] == value %}selected{% endif %}>{{ value }}</option>{% endfor %}{% if filters[key] and filters[key] not in result.facets[key] %}<option selected>{{ filters[key] }}</option>{% endif %}</select></label>
-        {% endfor %}
-        {% if catalog.formats and (result.facets['size'] or filters['size']) %}
-        <label>{{ catalog.size_label }}<select name="size"><option value="">All {{ catalog.size_label|lower }}s</option>{% for value in result.facets['size'] %}<option {% if filters['size'] == value %}selected{% endif %}>{{ value }}</option>{% endfor %}{% if filters['size'] and filters['size'] not in result.facets['size'] %}<option selected>{{ filters['size'] }}</option>{% endif %}</select></label>
-        {% endif %}
-        {% if catalog.formats %}
-        <label>Package<select name="format"><option value="">All packages</option>{% for value in catalog.formats %}<option {% if filters.format == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
-        {% endif %}
-        <label>Max price ($)<input type="number" name="max_price" min="0" max="1000000" step="0.01" value="{{ filters.max_price or 0 }}"><small>0 means any price</small></label>
-        <label>Minimum discount (%)<input type="number" name="min_discount" value="{{ filters.min_discount|round(1) }}" min="0" max="100" step="0.1"></label>
-        <label class="check-label"><input type="checkbox" name="stock" value="true" {% if filters.stock %}checked{% endif %}>In stock only</label>
-        <div class="drawer-actions">
-          <a class="reset" href="/#deals">Reset filters</a>
-          <button type="submit" class="secondary-button">Apply</button>
+          {% for key, label in [('brand', 'Brand'), ('store', 'Retailer')] %}
+          <label>{{ label }}<select name="{{ key }}"><option value="">All {{ label|lower }}s</option>{% for value in result.facets[key] %}<option {% if filters[key] == value %}selected{% endif %}>{{ value }}</option>{% endfor %}{% if filters[key] and filters[key] not in result.facets[key] %}<option selected>{{ filters[key] }}</option>{% endif %}</select></label>
+          {% endfor %}
+
+          <label>
+            <span>Original price</span>
+            <select name="min_reference">
+              {% for value in [0, 100, 120, 180, 200, 500, 1000, 2000, 5000] %}
+              <option value="{{ value }}" {% if filters.min_reference == value %}selected{% endif %}>{{ value|money }}{% if value == 0 %} · any{% else %}+{% endif %}</option>
+              {% endfor %}
+              {% if filters.min_reference not in [0,100,120,180,200,500,1000,2000,5000] %}
+              <option value="{{ filters.min_reference }}" selected>{{ filters.min_reference|money }}+</option>
+              {% endif %}
+            </select>
+          </label>
+
+          <label>Max price ($)<input type="number" name="max_price" min="0" max="1000000" step="0.01" value="{{ filters.max_price or 0 }}"><small>0 means any price</small></label>
+          <label>Minimum discount (%)<input type="number" name="min_discount" value="{{ filters.min_discount|round(1) }}" min="0" max="100" step="0.1"></label>
+          <label class="check-label"><input type="checkbox" name="stock" value="true" {% if filters.stock %}checked{% endif %}>In stock only</label>
+          <div class="drawer-actions">
+            <a class="reset" href="/#deals">Reset</a>
+            <button type="submit" class="primary-button">Apply filters</button>
+          </div>
         </div>
-      </div>
+      </form>
     </details>
-  </form>
+  </div>
 
   <div class="saved-searches" id="saved-searches" aria-label="Saved searches"></div>
   <p id="save-status" role="status" class="save-status"></p>

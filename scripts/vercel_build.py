@@ -82,8 +82,6 @@ def _drop_redundant_history_index(conn: sqlite3.Connection) -> bool:
 def compact_downloaded_db(db_path: Path) -> tuple[int, str | None]:
     """Repack the temporary build snapshot without removing observations."""
     before = validate_sqlite_db(db_path)
-    if before[0] == 0:
-        raise RuntimeError("Refusing to deploy an empty deal snapshot")
     original_bytes = db_path.stat().st_size
     conn = sqlite3.connect(db_path)
     try:

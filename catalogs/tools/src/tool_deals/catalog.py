@@ -253,7 +253,6 @@ CATALOG = Catalog(
             "power-tools", "power-tools-1", "machine-tools", "power-tool-closeouts", "all-closeouts",
         ),
         _shopify("Infinity Cutting Tools", "www.infinitytools.com", "all-products"),
-        _shopify("Welding Supplies from IOC", "weldingsuppliesfromioc.com", "all-welders", "battery-powered-welder"),
     ),
     classify=classify,
     default_reference=200,

@@ -402,6 +402,26 @@ STORES: list[StoreConfig] = [
         parser_type="shopify",
         tax_free=True, verify_shopify_currency=True,
     ),
+    StoreConfig(
+        "Darkside Snowboards", "darksidesnowboards.com",
+        scrape_urls=[
+            "https://darksidesnowboards.com/collections/darkside-collection-closeout-sale",
+            "https://darksidesnowboards.com/collections/all-sale-items",
+        ],
+        parser_type="shopify",
+        tax_free=True, verify_shopify_currency=True,
+    ),
+    StoreConfig(
+        "Milo Sport", "milosport.com",
+        scrape_urls=[
+            "https://www.milosport.com/collections/sale",
+            "https://www.milosport.com/collections/snowboards",
+            "https://www.milosport.com/collections/snowboard-boots",
+            "https://www.milosport.com/collections/snowboard-bindings",
+        ],
+        parser_type="shopify",
+        verify_shopify_currency=True,
+    ),
 ]
 
 
