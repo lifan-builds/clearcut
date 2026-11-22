@@ -95,7 +95,7 @@ def _build_parser(source, catalog: Catalog):
 
 
 async def refresh(catalog: Catalog, path: Path, *, max_pages: int = 30,
-                  delay: float = 2.0, concurrency: int = 1, transport=None) -> list[dict]:
+                  delay: float = 1.5, concurrency: int = 1, transport=None) -> list[dict]:
     for source in catalog.sources:
         if source.currency != "USD":
             raise ValueError("These catalogs accept USD sources only")
@@ -110,7 +110,7 @@ async def refresh(catalog: Catalog, path: Path, *, max_pages: int = 30,
                 outcome = {"errors": 0, "pages": 0}
                 observed_at = datetime.now(UTC).isoformat()
                 parser = _build_parser(source, catalog)
-                source_delay = max(delay, 2.5) if (delay > 0 and parser.requires_product_pages) else delay
+                source_delay = max(delay, 2.0) if (delay > 0 and source.domain == "racycles.com") else delay
                 try:
                     products = await asyncio.wait_for(
                         fetch_products(
