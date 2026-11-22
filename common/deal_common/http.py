@@ -130,7 +130,8 @@ async def fetch_products(store: RetailerConfig, parser: BaseParser, client: http
             async with semaphore:
                 log.info("[%s] Fetching page %d: %s", store.name, page, current_url)
                 try:
-                    resp = await fetch_listing(client, current_url, delay)
+                    listing_delay = max(delay, 6.0) if (delay > 0 and "/products.json" in current_url) else delay
+                    resp = await fetch_listing(client, current_url, listing_delay)
                     outcome["pages"] += 1
                     collection["pages"] += 1
                 except httpx.HTTPError as exc:
@@ -182,6 +183,8 @@ async def fetch_products(store: RetailerConfig, parser: BaseParser, client: http
                 collection["status"] = "product_http_error"
                 if isinstance(exc, httpx.HTTPStatusError):
                     collection["http_status"] = exc.response.status_code
+                    if exc.response.status_code == 429:
+                        domain_rate_limited = True
                 break
             except (ValueError, TypeError, KeyError, AttributeError) as exc:
                 outcome["errors"] += 1

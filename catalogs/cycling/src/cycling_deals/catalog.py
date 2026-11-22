@@ -167,7 +167,15 @@ CATALOG = Catalog(
     categories=("Mountain bikes", "Road bikes", "Gravel bikes", "Electric bikes", "Framesets", "Wheelsets", "Groupsets", "Other complete bikes"),
     sources=(
         _shopify("Incycle Bicycles", "www.incycle.com", "sale-bicycles"),
-        _shopify("RA Cycles", "racycles.com", "bikes", "bike-wheels-on-sale"),
+        _shopify(
+            "RA Cycles",
+            "racycles.com",
+            "road-bikes-on-sale",
+            "mountain-bikes-on-sale",
+            "gravel-bikes-on-sale",
+            "e-bikes-on-sale",
+            "bike-wheels-on-sale",
+        ),
         _shopify("evo", "www.evo.com", "bikes"),
         RetailerConfig(
             name="Bike Closet",
@@ -186,7 +194,7 @@ CATALOG = Catalog(
         _shopify("ERIK’S Bike Shop", "www.eriksbikeshop.com", "cycling-bicycles"),
         _shopify("Pro Bike Supply", "www.probikesupply.com", "on-sale-bikes-frames"),
         _shopify("Contender Bicycles", "contenderbicycles.com", "sale"),
-        _shopify("Cambria Bike", "cambriabike.com", "mtb-bikes", "mtb-frames"),
+        _shopify("Cambria Bike", "cambriabike.com", "sale-bikes", "mtb-frames"),
         _shopify("INTENSE", "intensecycles.com", "sale"),
         _shopify("Bike Mart", "www.bikemart.com", "bikes"),
         _shopify("First Stop Board Barn", "www.firststopboardbarn.com", "blazing-summer-bike-sale"),
