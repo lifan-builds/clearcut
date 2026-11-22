@@ -493,7 +493,9 @@ def test_dropped_sort_and_new_low_badge_render(isolated_app, monkeypatch):
         deal = _make_deal()
         deal.current_price, deal.scraped_at = price, now - timedelta(days=age)
         asyncio.run(db_module.upsert_deals([deal], isolated_app))
-    asyncio.run(db_module.upsert_deals([_make_deal("Völkl Mantra 102")], isolated_app))
+    other = _make_deal("Völkl Mantra 102")
+    other.scraped_at = now
+    asyncio.run(db_module.upsert_deals([other], isolated_app))
 
     with TestClient(app_module.create_app()) as client:
         page = BeautifulSoup(client.get("/", params={"sort": "dropped"}).text, "html.parser")
