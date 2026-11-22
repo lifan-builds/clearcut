@@ -394,9 +394,9 @@ STORES: list[StoreConfig] = [
     StoreConfig(
         "Next Adventure", "nextadventure.net",
         scrape_urls=[
-            "https://nextadventure.net/collections/skis",
+            "https://nextadventure.net/collections/c-skis",
             "https://nextadventure.net/collections/snowboards",
-            "https://nextadventure.net/collections/ski-boots",
+            "https://nextadventure.net/collections/c-ski-boots",
             "https://nextadventure.net/collections/snowboard-boots",
         ],
         parser_type="shopify",
