@@ -42,7 +42,7 @@ def offer_destination(url, key):
         pairs = parse_qsl(urlsplit(url).query, keep_blank_values=True)
         return (parent.isdigit() and variant.isdigit() and int(parent) > 0 and int(variant) > 0
                 and bool(pairs) and len(dict(pairs)) == len(pairs)
-                and all(re.fullmatch(r'attribute_[a-z0-9_]+', k) and v for k, v in pairs)
+                and all(re.fullmatch(r'attribute_[a-z0-9_-]+', k) and v for k, v in pairs)
                 and urlencode(sorted(pairs)) == query)
     except (ValueError, AttributeError):
         return False
@@ -59,6 +59,8 @@ def product_kind(parent):
     name, description = unescape(parent['name']).casefold(), text(parent.get('short_description')).casefold()
     if 'frameset' in name or 'frames are final sale' in description:
         return 'Framesets'
+    if 'wheelset' in name:
+        return 'Wheelsets'
     if 'complete bike' in name:
         return 'Complete Bikes'
     return ''
@@ -87,9 +89,15 @@ def selection(parent, variant_id):
     for a in attributes:
         definition = definitions[a['name']]
         terms = [t for t in definition['terms'] if t['slug'] == a['value']]
-        if not a['value'] or len(terms) != 1 or not re.fullmatch(r'pa_[a-z0-9_]+', definition['taxonomy']):
+        taxonomy = definition.get('taxonomy')
+        attr_key = (
+            taxonomy if isinstance(taxonomy, str) and re.fullmatch(r'pa_[a-z0-9_-]+', taxonomy)
+            else re.sub(r'[^a-z0-9_]+', '-', a['name'].casefold()).strip('-') if taxonomy is None
+            else ''
+        )
+        if not a['value'] or len(terms) != 1 or not attr_key:
             raise ValueError('Ambiguous Bike Closet attribute')
-        query['attribute_' + definition['taxonomy']] = a['value']
+        query['attribute_' + attr_key] = a['value']
         labels[a['name']] = unescape(terms[0]['name'])
     return urlencode(sorted(query.items())), labels
 

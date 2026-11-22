@@ -167,7 +167,7 @@ CATALOG = Catalog(
     categories=("Mountain bikes", "Road bikes", "Gravel bikes", "Electric bikes", "Framesets", "Wheelsets", "Groupsets", "Other complete bikes"),
     sources=(
         _shopify("Incycle Bicycles", "www.incycle.com", "sale-bicycles"),
-        _shopify("RA Cycles", "racycles.com", "bikes", "wheels"),
+        _shopify("RA Cycles", "racycles.com", "bikes", "bike-wheels-on-sale"),
         _shopify("evo", "www.evo.com", "bikes"),
         RetailerConfig(
             name="Bike Closet",
@@ -176,7 +176,7 @@ CATALOG = Catalog(
             scrape_urls=["https://bikecloset.com/wp-json/wc/store/v1/products?category=3411&type=variable&per_page=100&page=1&orderby=id&order=asc"],
         ),
         _shopify("Ari Bikes", "aribikes.com", "outlet"),
-        _shopify("Thunder Mountain Bikes", "thundermountainbikes.com", "bikes-on-sale", "wheels"),
+        _shopify("Thunder Mountain Bikes", "thundermountainbikes.com", "all-bikes-framesets", "wheels"),
         _shopify("Spot Bikes", "spotbikes.com", "outlet", "outlet-bikes", "bikes"),
         _shopify("Evil Bikes", "www.evil-bikes.com", "bikes"),
         _shopify("Gravity Coalition", "gravitycoalition.com", "all-bikes-frames", "bike-sale"),

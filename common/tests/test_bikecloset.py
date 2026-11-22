@@ -67,6 +67,44 @@ def test_exact_variant_currency_price_image_and_safe_destination():
         assert not offer_destination(bad, offer.variant_key)
 
 
+def test_custom_product_attributes_without_pa_taxonomy_bind_exact_variant():
+    wheel_url = 'https://bikecloset.com/product/princeton-wake-6560-evo-2-disc-wheelset/'
+    p = {
+        **parent(),
+        'id': 1774241,
+        'name': 'Princeton Wake 6560 Evo 2 Disc Wheelset',
+        'permalink': wheel_url,
+        'short_description': '<p>Brand New With Warranty! Wheels are final sale.</p>',
+        'description': '',
+        'attributes': [
+            {'name': 'Hub Type', 'taxonomy': None, 'has_variations': True,
+             'terms': [{'name': 'Tactic TR02', 'slug': 'Tactic TR02'}, {'name': 'Tactic TR01', 'slug': 'Tactic TR01'}]},
+            {'name': 'Freehub', 'taxonomy': None, 'has_variations': True,
+             'terms': [{'name': 'Shimano', 'slug': 'Shimano'}, {'name': 'XDR', 'slug': 'XDR'}]},
+        ],
+        'variations': [
+            {'id': 1774244, 'attributes': [{'name': 'Hub Type', 'value': 'Tactic TR02'}, {'name': 'Freehub', 'value': 'XDR'}]},
+        ],
+    }
+    v = {
+        **variation(),
+        'id': 1774244,
+        'parent': 1774241,
+        'name': 'Princeton Wake 6560 Evo 2 Disc Wheelset',
+        'permalink': wheel_url + '?attribute_hub-type=Tactic+TR02&attribute_freehub=XDR',
+    }
+    offer = decode_offer(p, v)
+    assert offer is not None
+    assert offer.options == 'Freehub: XDR / Hub Type: Tactic TR02 / SKU sku-small'
+    assert offer_destination(offer.url, offer.variant_key)
+    card = {'name': p['name'], 'currency': 'USD', 'offer': {
+        'url': offer.url, 'variant_key': offer.variant_key,
+        'current_price': offer.current_price, 'original_price': offer.original_price,
+        'options': offer.options, 'size': offer.size, 'availability_note': offer.availability_note,
+    }}
+    assert validate_bikecloset_product(card, p, v)['status'] == 'match'
+
+
 @pytest.mark.parametrize('case', ['parent', 'currency', 'minor-unit', 'nonfinite', 'unknown-stock', 'options', 'destination'])
 def test_conflicting_variant_evidence_is_rejected(case):
     p, v = parent(), variation()
