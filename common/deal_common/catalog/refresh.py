@@ -128,7 +128,8 @@ async def refresh(catalog: Catalog, path: Path, *, max_pages: int = 30,
                 status = "complete" if outcome["errors"] == 0 and outcome.get("collections") else "incomplete"
                 outcome.update(parsed_products=len(products), accepted_products=len(normalized))
                 async with db_lock:
-                    save_source(path, catalog.slug, source.name, observed_at, normalized, status, outcome)
+                    save_source(path, catalog.slug, source.name, observed_at, normalized, status, outcome,
+                                brand_aliases=catalog.brand_aliases)
                 return {"source": source.name, "status": status, **outcome}
 
         return list(await asyncio.gather(*(refresh_one(source) for source in catalog.sources)))

@@ -15,9 +15,10 @@ for source in ("common", "catalogs/cycling/src", "catalogs/tools/src", "catalogs
     sys.path.insert(0, str(ROOT / source))
 
 from deal_common.catalog.health import snapshot_health
-from deal_common.catalog.query import is_fresh, query
+from deal_common.catalog.query import FRESHNESS_HOURS, is_fresh, query
 from deal_common.catalog.storage import database as open_database
 from deal_common.catalog.storage import read_sources, save_source
+from deal_common.offers import HISTORY_DAYS
 
 
 def package(slug: str, database: Path, output: Path, public_url: str | None = None) -> dict:
@@ -61,17 +62,17 @@ def package(slug: str, database: Path, output: Path, public_url: str | None = No
     ignore = shutil.ignore_patterns("__pycache__", "*.pyc")
     shutil.copytree(ROOT / "common/deal_common", output / "src/deal_common", ignore=ignore)
     shutil.copytree(ROOT / f"catalogs/{slug}/src/{module}", output / f"src/{module}", ignore=ignore)
-    for row in selected:
-        save_source(output / "data/catalog.db", slug, row["name"], row["successful_at"],
-                    row["products"], "complete", row["detail"])
     # Preserve real observations across releases; never reset history to the
     # latest snapshot, and never copy unrelated source/operational tables.
     with open_database(database, slug) as original, open_database(output / "data/catalog.db", slug, writable=True) as bundled, bundled:
         for source in CATALOG.sources:
             history = original.execute(
                 "SELECT source, observed_at, products FROM observations WHERE source=? AND observed_at>=? AND observed_at<=?",
-                (source.name, (now - timedelta(days=45)).isoformat(), now.isoformat()))
+                (source.name, (now - timedelta(days=HISTORY_DAYS, hours=FRESHNESS_HOURS)).isoformat(), now.isoformat()))
             bundled.executemany("INSERT OR REPLACE INTO observations VALUES (?, ?, ?)", history)
+    for row in selected:
+        save_source(output / "data/catalog.db", slug, row["name"], row["successful_at"],
+                    row["products"], "complete", row["detail"], brand_aliases=CATALOG.brand_aliases)
     api = output / "api"
     api.mkdir()
     (api / "index.py").write_text(

@@ -57,6 +57,7 @@ class AggregatedDeal:
     review_url: str | None = None
     first_seen: str | None = None
     previous_price: float | None = None
+    price_signal: str | None = None
     currency: str = "USD"
     product_type: str | None = None
 

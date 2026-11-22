@@ -191,7 +191,7 @@ def test_default_ranking_puts_deepest_discount_before_image_availability(tmp_pat
     asyncio.run(run())
 
 
-def test_observation_bloat_pruning_keeps_daily_lows_and_recent_variant_baseline(tmp_path):
+def test_observation_pruning_keeps_daily_lows_variant_price_changes_and_window_opening_price(tmp_path):
     from datetime import UTC, timedelta
 
     import aiosqlite
@@ -217,10 +217,17 @@ def test_observation_bloat_pruning_keeps_daily_lows_and_recent_variant_baseline(
             await conn.executemany(
                 "INSERT INTO offer_observations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
-                    ("https://example.com/ski", "v1", (now - timedelta(days=30)).isoformat(), 500, 800, "USD", "in_stock", "retailer_reference", "Ski"),
-                    ("https://example.com/ski", "v1", day_five.isoformat(), 450, 800, "USD", "in_stock", "retailer_reference", "Ski"),
-                    ("https://example.com/ski", "v1", (day_five + timedelta(hours=6)).isoformat(), 420, 800, "USD", "in_stock", "retailer_reference", "Ski"),
-                    ("https://example.com/ski", "v1", now.isoformat(), 349, 800, "USD", "in_stock", "retailer_reference", "Ski"),
+                    ("https://example.com/ski", "v1", at.isoformat(), price, 800, "USD", "in_stock", "retailer_reference", "Ski")
+                    for at, price in [
+                        (now - timedelta(days=60), 520),  # superseded before the window opened
+                        (now - timedelta(days=50), 500),  # opening price carried into the window
+                        (now - timedelta(days=30), 500),  # unchanged, compressed away
+                        (day_five, 450),
+                        (day_five + timedelta(hours=6), 450),
+                        (now - timedelta(days=1), 420),
+                        (now - timedelta(hours=2), 420),  # recent checks stay intact
+                        (now, 349),
+                    ]
                 ],
             )
             await conn.commit()
@@ -230,6 +237,6 @@ def test_observation_bloat_pruning_keeps_daily_lows_and_recent_variant_baseline(
             hist = await (await conn.execute("SELECT price FROM price_history ORDER BY observed_at")).fetchall()
             obs = await (await conn.execute("SELECT price FROM offer_observations ORDER BY observed_at")).fetchall()
         assert [r[0] for r in hist] == [399.0, 379.0, 349.0]
-        assert [r[0] for r in obs] == [420.0, 349.0]
+        assert [r[0] for r in obs] == [500, 450, 420, 420, 349]
 
     asyncio.run(run())

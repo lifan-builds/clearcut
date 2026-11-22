@@ -334,6 +334,10 @@ summary {
   font-size: 12px;
   font-weight: 800;
 }
+.drop-pill--low {
+  background: var(--savings);
+  color: #ffffff;
+}
 .other-shops-link {
   font-weight: 700;
   color: var(--ink);
@@ -755,6 +759,52 @@ label small {
 }
 .results-bar strong {
   color: var(--ink);
+}
+.results-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+.sort-switch {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+}
+.sort-switch a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
+  text-decoration: none;
+  transition: background-color 160ms var(--ease-spring), color 160ms var(--ease-spring);
+}
+.sort-switch a:hover {
+  color: var(--ink);
+}
+.sort-switch a:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.sort-switch a[aria-current] {
+  background: var(--ink);
+  color: #ffffff;
+}
+.sort-count {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--savings-bg);
+  color: var(--savings);
+  font-size: 11.5px;
+  text-align: center;
 }
 .results-actions {
   display: flex;

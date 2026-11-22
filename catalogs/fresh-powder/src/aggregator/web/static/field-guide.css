@@ -1071,6 +1071,14 @@ summary {
   color: var(--green);
   margin-top: 4px;
 }
+.new-low-pill {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--green);
+  color: #ffffff;
+}
 
 .spec-strip {
   display: grid;

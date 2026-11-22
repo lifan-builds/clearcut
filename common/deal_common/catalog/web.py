@@ -4,6 +4,7 @@ import re
 from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlencode
 from xml.sax.saxutils import escape
 
@@ -14,7 +15,7 @@ from fastapi.templating import Jinja2Templates
 
 from deal_common.catalog.definition import Catalog, manufacturer_name
 from deal_common.catalog.health import snapshot_health
-from deal_common.catalog.query import FRESHNESS_HOURS, is_fresh, query
+from deal_common.catalog.query import FRESHNESS_HOURS, SORTS, is_fresh, query
 from deal_common.catalog.storage import read_offer_history, read_sources
 from deal_common.offers import size_key
 
@@ -66,12 +67,13 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
               min_reference: float = Query(catalog.default_reference, ge=0, le=1000000),
               max_price: float = Query(0, ge=0, le=1000000),
               min_discount: float = Query(0, ge=0, le=100), stock: bool = False,
+              sort: Literal["discount", "dropped"] = "discount",
               page: int = Query(1, ge=1, le=100000)):
         if brand and catalog.brand_aliases:
             brand = manufacturer_name(brand, brand_aliases=catalog.brand_aliases)
         filters = {"q": q, "category": category, "brand": brand, "store": store, "size": size, "format": format,
                    "platform": platform, "min_reference": min_reference, "max_price": max_price,
-                   "min_discount": min_discount, "stock": stock, "page": page}
+                   "min_discount": min_discount, "stock": stock, "sort": sort, "page": page}
         all_sources = sources()
         result = query(all_sources, filters, brand_aliases=catalog.brand_aliases)
         if size:
@@ -107,16 +109,6 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
             other_cnt = max(0, len(model_stores[s_key] - {card["store"]})) if s_key else 0
             card["other_shops"] = other_cnt
             card["compare_url"] = ("/?" + urlencode({"q": f"{card['brand']} {s_key[1]}"}) + "#deals") if other_cnt and s_key else ""
-            if database.exists():
-                hist = read_offer_history(database, catalog.slug, card["store"], card, card["offer"],
-                                          now=now_utc, brand_aliases=catalog.brand_aliases)
-                if len(hist) >= 2:
-                    prev_price = hist[1]["price"]
-                    min_45d = min(h["price"] for h in hist)
-                    if prev_price > card["offer"]["current_price"]:
-                        card["price_drop"] = round(prev_price - card["offer"]["current_price"], 2)
-                    elif card["offer"]["current_price"] <= min_45d and len(hist) >= 3:
-                        card["is_45d_low"] = True
 
         def page_url(number):
             return "/?" + urlencode({**filters, "page": number, "stock": str(stock).lower()}) + "#deals"
@@ -143,6 +135,8 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
             "catalog": catalog, "filters": filters, "result": result, "active_filters": active_filters,
             "previous": page_url(result["page"] - 1), "next": page_url(result["page"] + 1),
             "source_count": len(catalog.sources), "freshness_hours": FRESHNESS_HOURS,
+            "sorts": {key: (label, "/?" + urlencode({**filters, "sort": key, "page": 1, "stock": str(stock).lower()}) + "#deals")
+                      for key, label in SORTS.items()},
         })
 
     @app.get("/history", response_class=HTMLResponse)

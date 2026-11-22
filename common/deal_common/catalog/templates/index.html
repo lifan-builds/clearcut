@@ -36,6 +36,7 @@
 
       <form action="/#deals" method="get" id="filters" class="filter-drawer-box">
         <input type="hidden" name="q" value="{{ filters.q }}">
+        {% if filters.sort != 'discount' %}<input type="hidden" name="sort" value="{{ filters.sort }}">{% endif %}
         <div class="drawer-grid">
           <label>
             <span>Category</span>
@@ -123,7 +124,14 @@
     {% endif %}
 
     <div class="results-bar">
-      <p><strong>{{ result.total }}</strong> matching deals · Ranked by <strong>deepest % off</strong></p>
+      <div class="results-summary">
+        <p><strong>{{ result.total }}</strong> matching deals</p>
+        <nav class="sort-switch" aria-label="Rank deals by">
+          {% for key, (label, url) in sorts.items() %}
+          <a href="{{ url }}"{% if filters.sort == key %} aria-current="true"{% endif %}>{{ label|capitalize }}{% if key == 'dropped' %} <span class="sort-count">{{ result.dropped }}</span>{% endif %}</a>
+          {% endfor %}
+        </nav>
+      </div>
       <div class="results-actions">
         <a class="quiet-link" href="/#deals">Reset</a>
         <button type="button" id="save-search" class="quiet-button">
@@ -163,7 +171,7 @@
               <span>USD</span>
               <span class="reference"><s>{{ offer.original_price|money }}</s></span>
             </div>
-            <p class="savings">Save {{ offer.savings|money }}{% if product.price_drop %} · <span class="drop-pill">Down {{ product.price_drop|money }}</span>{% elif product.is_45d_low %} · <span class="drop-pill">45d low</span>{% endif %}</p>
+            <p class="savings">Save {{ offer.savings|money }}{% if product.price_signal == 'new_low' %} · <span class="drop-pill drop-pill--low" title="Below every price we tracked for this variant in the last 45 days">New low, down {{ product.price_drop|money }}</span>{% elif product.price_signal %} · <span class="drop-pill" title="Lower than this variant's previous daily check">Down {{ product.price_drop|money }}</span>{% endif %}</p>
             {% if offer.price_note %}<p class="price-note">{{ offer.price_note }}</p>{% endif %}
           </div>
 

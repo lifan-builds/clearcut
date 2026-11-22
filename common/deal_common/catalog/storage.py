@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from deal_common.catalog.definition import manufacturer_name
+from deal_common.offers import HISTORY_DAYS
 
 
 @contextmanager
@@ -42,8 +43,54 @@ def database(path: Path, catalog: str, *, writable: bool = False):
         connection.close()
 
 
+def _offer_key(product: dict, offer: dict, brand_aliases) -> tuple:
+    return (product["url"], product["name"], manufacturer_name(product["brand"], brand_aliases=brand_aliases),
+            offer["variant_key"], offer["options"], offer["url"])
+
+
+def _daily_offers(rows, brand_aliases, *, start: datetime, end: datetime) -> dict[tuple, dict[str, dict]]:
+    """Latest observation per UTC day for every exact product and variant identity."""
+    daily = {}
+    for row in rows:
+        stamp = datetime.fromisoformat(row["observed_at"])
+        if stamp.tzinfo is None or not start <= stamp <= end:
+            continue
+        day = stamp.astimezone(UTC).date().isoformat()
+        for historical in json.loads(row["products"]):
+            for candidate in historical["offers"]:
+                daily.setdefault(_offer_key(historical, candidate, brand_aliases), {})[day] = {
+                    "observed_at": row["observed_at"],
+                    "price": candidate["current_price"],
+                    "reference": candidate["original_price"],
+                    "availability": candidate["availability"],
+                    "availability_note": candidate.get("availability_note", ""),
+                    "price_note": candidate.get("price_note", ""),
+                }
+    return daily
+
+
+def _with_history(connection, name: str, observed_at: str, products: list[dict], brand_aliases) -> list[dict]:
+    """Attach prior-day evidence to each current offer so serving can rank recent drops without rescanning."""
+    now = datetime.fromisoformat(observed_at)
+    today = datetime.combine(now.astimezone(UTC).date(), datetime.min.time(), UTC)
+    rows = connection.execute("SELECT observed_at, products FROM observations WHERE source=? ORDER BY observed_at", (name,))
+    daily = _daily_offers(rows, brand_aliases, start=now - timedelta(days=HISTORY_DAYS),
+                          end=today - timedelta(microseconds=1))
+
+    def summary(days: dict[str, dict] | None) -> dict | None:
+        if not days:
+            return None
+        ordered = [days[day] for day in sorted(days)]
+        return {"previous_price": ordered[-1]["price"], "previous_at": ordered[-1]["observed_at"],
+                "low": min(entry["price"] for entry in ordered), "tracked_since": ordered[0]["observed_at"]}
+
+    return [{**product, "offers": [{**offer, "history": summary(daily.get(_offer_key(product, offer, brand_aliases)))}
+                                   for offer in product["offers"]]} for product in products]
+
+
 def save_source(path: Path, catalog: str, name: str, observed_at: str,
-                products: list[dict], status: str, detail: dict):
+                products: list[dict], status: str, detail: dict, *,
+                brand_aliases: tuple[tuple[str, str], ...] = ()):
     with database(path, catalog, writable=True) as connection, connection:
         connection.execute("""
             INSERT INTO sources (name, checked_at, status, detail) VALUES (?, ?, ?, ?)
@@ -51,6 +98,7 @@ def save_source(path: Path, catalog: str, name: str, observed_at: str,
                 status=excluded.status, detail=excluded.detail
         """, (name, observed_at, status, json.dumps(detail)))
         if status == "complete":
+            products = _with_history(connection, name, observed_at, products, brand_aliases)
             payload = json.dumps(products, allow_nan=False)
             connection.execute("UPDATE sources SET products=?, successful_at=? WHERE name=?",
                                (payload, observed_at, name))
@@ -75,35 +123,15 @@ def read_sources(path: Path, catalog: str) -> list[dict]:
 
 
 def read_offer_history(path: Path, catalog: str, source: str, product: dict, offer: dict,
-                       *, now: datetime, days: int = 45,
+                       *, now: datetime, days: int = HISTORY_DAYS,
                        brand_aliases: tuple[tuple[str, str], ...] = ()) -> list[dict]:
     """One successful observation per UTC day, for the exact current identity only."""
     cutoff = now - timedelta(days=days)
-    identity = (product["url"], product["name"], manufacturer_name(product["brand"], brand_aliases=brand_aliases))
-    offer_key = (offer["variant_key"], offer["options"], offer["url"])
     with database(path, catalog) as connection:
         rows = connection.execute("""
             SELECT observed_at, products FROM observations
             WHERE source=? AND observed_at>=? AND observed_at<=?
             ORDER BY observed_at
         """, (source, cutoff.isoformat(), now.isoformat())).fetchall()
-    daily = {}
-    for row in rows:
-        stamp = datetime.fromisoformat(row["observed_at"])
-        if stamp.tzinfo is None or not cutoff <= stamp <= now:
-            continue
-        for historical in json.loads(row["products"]):
-            if ((historical["url"], historical["name"],
-                 manufacturer_name(historical["brand"], brand_aliases=brand_aliases)) != identity):
-                continue
-            for candidate in historical["offers"]:
-                if (candidate["variant_key"], candidate["options"], candidate["url"]) == offer_key:
-                    daily[stamp.astimezone(UTC).date().isoformat()] = {
-                        "observed_at": row["observed_at"],
-                        "price": candidate["current_price"],
-                        "reference": candidate["original_price"],
-                        "availability": candidate["availability"],
-                        "availability_note": candidate.get("availability_note", ""),
-                        "price_note": candidate.get("price_note", ""),
-                    }
-    return list(reversed(daily.values()))
+    daily = _daily_offers(rows, brand_aliases, start=cutoff, end=now).get(_offer_key(product, offer, brand_aliases), {})
+    return [daily[day] for day in sorted(daily, reverse=True)]

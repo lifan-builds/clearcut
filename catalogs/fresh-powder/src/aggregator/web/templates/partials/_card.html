@@ -9,7 +9,7 @@
 <div class="price-ledger">
 <div class="prices"><strong>{{ symbol }}{{ "{:,.2f}".format(d.current_price) }}</strong><span class="currency-tag">{{ currency }}{% if currency == 'CAD' %} · ≈ US${{ "{:,.0f}".format(d.current_price * 0.72) }}{% endif %}</span>{% if d.original_price and d.original_price > d.current_price %}<del>{{ symbol }}{{ "{:,.2f}".format(d.original_price) }}</del>{% endif %}</div>
 {% if d.original_price and d.original_price > d.current_price %}<p class="deal-savings">Save {{ symbol }}{{ "{:,.2f}".format(d.original_price - d.current_price) }}{% if us_tax_free_stores is defined and d.store in us_tax_free_stores %} <span class="tax-free-pill">Out-of-state tax-free</span>{% endif %}</p>{% endif %}
-{% if d.previous_price is defined and d.previous_price and d.previous_price > d.current_price %}<p class="price-drop">Down {{ symbol }}{{ "{:,.2f}".format(d.previous_price - d.current_price) }} since last check</p>{% endif %}
+{% if d.price_signal %}<p class="price-drop">{% if d.price_signal == 'new_low' %}<span class="new-low-pill" title="Below every price tracked for this variant in the last 45 days">New low</span> {% endif %}Down {{ symbol }}{{ "{:,.2f}".format(d.previous_price - d.current_price) }} since last check</p>{% endif %}
 </div>
 <div class="spec-strip">
 <p class="sizes-row">{% if d.offer_options %}<span>Variant</span> {{ d.offer_options }}{% elif d.sizes %}<span>Sizes</span> {{ d.sizes }}{% else %}See sizes at store{% endif %}</p>

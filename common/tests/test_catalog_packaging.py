@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from deal_common.catalog.storage import save_source
+from deal_common.catalog.storage import read_sources, save_source
 from tool_deals.catalog import CATALOG
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -35,6 +35,10 @@ def test_standalone_bundle_contains_only_selected_catalog_and_serves(tmp_path):
     output = tmp_path / "bundle"
     receipt = packager.package("tools", db, output, "https://benchdrop.example.com")
     assert receipt["matching_deals"] == 1
+    bundled = {row["name"]: row for row in read_sources(output / "data/catalog.db", "tools")}
+    original = {row["name"]: row for row in read_sources(db, "tools")}
+    assert bundled["Woodcraft"]["products"] == original["Woodcraft"]["products"]
+    assert bundled["Woodcraft"]["products"][0]["offers"][0]["history"]["previous_price"] == 500
     assert (output / "src/tool_deals/catalog.py").exists()
     assert not (output / "src/cycling_deals").exists()
     assert not list(output.rglob(".env*"))

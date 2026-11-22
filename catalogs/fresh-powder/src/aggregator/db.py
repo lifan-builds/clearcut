@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import aiosqlite
-from deal_common.offers import discount
+from deal_common.offers import HISTORY_DAYS, discount, price_signal
 
 from aggregator.config import EQUIPMENT_CATEGORIES, STORES, env_flag
 from aggregator.models import AggregatedDeal, model_year
@@ -134,21 +134,38 @@ async def ensure_deals_db_ready(db_path: Path = DB_PATH) -> None:
 async def _prune_observation_bloat(db: aiosqlite.Connection, *, now: datetime | None = None) -> None:
     anchor = (now or datetime.now(UTC).replace(tzinfo=None))
     recent_cutoff = (anchor - timedelta(hours=48)).isoformat()
-    obs_cutoff = (anchor - timedelta(days=14)).isoformat()
+    obs_cutoff = (anchor - timedelta(days=HISTORY_DAYS)).isoformat()
     hist_cutoff = (anchor - timedelta(days=180)).isoformat()
 
-    await db.execute("DELETE FROM offer_observations WHERE observed_at < ?", (obs_cutoff,))
+    # Older variant evidence keeps only price changes, so the minimum over kept rows
+    # is the window low; the latest row before the window carries its opening price.
     await db.execute(
         """
-        DELETE FROM offer_observations
-        WHERE observed_at < ?
-          AND rowid NOT IN (
-              SELECT MAX(rowid) FROM offer_observations
-              WHERE observed_at < ?
-              GROUP BY product_url, variant_key
-          )
+        DELETE FROM offer_observations WHERE rowid IN (
+            SELECT rowid FROM (
+                SELECT rowid, observed_at,
+                       (price, reference_price, currency, availability, reference_basis, product_name)
+                       IS (LAG(price) OVER w, LAG(reference_price) OVER w, LAG(currency) OVER w,
+                           LAG(availability) OVER w, LAG(reference_basis) OVER w, LAG(product_name) OVER w)
+                       AS unchanged
+                FROM offer_observations
+                WINDOW w AS (PARTITION BY product_url, variant_key ORDER BY observed_at)
+            ) WHERE observed_at < ? AND unchanged
+        )
         """,
-        (recent_cutoff, recent_cutoff),
+        (recent_cutoff,),
+    )
+    await db.execute(
+        """
+        DELETE FROM offer_observations WHERE rowid IN (
+            SELECT rowid FROM (
+                SELECT rowid, ROW_NUMBER() OVER (
+                    PARTITION BY product_url, variant_key ORDER BY observed_at DESC) AS newest
+                FROM offer_observations WHERE observed_at < ?
+            ) WHERE newest > 1
+        )
+        """,
+        (obs_cutoff,),
     )
     await db.execute("DELETE FROM price_history WHERE observed_at < ?", (hist_cutoff,))
     await db.execute(
@@ -351,6 +368,21 @@ async def get_category_counts(db_path: Path = DB_PATH) -> dict[str, int]:
     return {row[0]: row[1] for row in rows}
 
 
+def _prior(expression: str, tail: str = "", *, window: bool = False) -> str:
+    """Same variant (or, for single-price listings, same URL) before this snapshot.
+
+    Variant evidence is change-point compressed with one carried opening row, so its
+    minimum is already the window low; daily product history needs an explicit window."""
+    recent = f" AND datetime(obs.observed_at) >= datetime(deals.scraped_at, '-{HISTORY_DAYS} days')" if window else ""
+    return f"""CASE WHEN deals.variant_key IS NOT NULL THEN
+        (SELECT {expression} FROM offer_observations obs
+         WHERE obs.product_url = deals.url AND obs.variant_key = deals.variant_key
+         AND obs.currency = deals.currency AND obs.product_name = deals.name
+         AND obs.observed_at < deals.scraped_at {tail})
+        ELSE (SELECT {expression} FROM price_history obs WHERE obs.url = deals.url
+         AND obs.observed_at < deals.scraped_at{recent} {tail}) END"""
+
+
 async def query_deals(
     *,
     category: str | None = None,
@@ -463,13 +495,15 @@ async def query_deals(
             rows = await cursor.fetchall()
         return {row[0]: row[1] for row in rows} if count_by_store else rows[0][0]
 
+    discount_order = (
+        "deals.discount_pct DESC, CASE WHEN deals.currency = 'USD' THEN 0 ELSE 1 END, "
+        "deals.currency ASC, (deals.original_price - deals.current_price) DESC, "
+        "(deals.image_url IS NOT NULL AND deals.image_url != '') DESC, deals.id ASC"
+    )
     sort_map = {
-        "discount_pct": (
-            "deals.discount_pct DESC, CASE WHEN deals.currency = 'USD' THEN 0 ELSE 1 END, "
-            "deals.currency ASC, (deals.original_price - deals.current_price) DESC, "
-            "(deals.image_url IS NOT NULL AND deals.image_url != '') DESC, deals.id ASC"
-        ),
-        "top_reviewed": "dr.score DESC NULLS LAST, deals.discount_pct DESC",
+        "discount_pct": discount_order,
+        "dropped": "CASE price_signal WHEN 'new_low' THEN 0 WHEN 'dropped' THEN 1 ELSE 2 END, " + discount_order,
+        "top_reviewed": "deals.review_score DESC NULLS LAST, deals.discount_pct DESC",
         "price_low": "deals.current_price ASC",
         "price_high": "deals.current_price DESC",
         "store": "deals.store ASC, deals.discount_pct DESC",
@@ -481,23 +515,24 @@ async def query_deals(
         await db.create_function("price_discount", 2, discount, deterministic=True)
         await db.create_function("matches_length", 3, matches_length, deterministic=True)
         await db.create_function("model_year", 1, model_year, deterministic=True)
+        await db.create_function("price_signal", 6, price_signal, deterministic=True)
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             selection + f"""\
-            SELECT deals.*, dr.score AS review_score, dr.award AS review_award,
-                   dr.review_url AS review_url,
-                   CASE WHEN deals.variant_key IS NOT NULL THEN
-                   (SELECT obs.price FROM offer_observations obs
-                    WHERE obs.product_url = deals.url AND obs.variant_key = deals.variant_key
-                    AND obs.currency = deals.currency AND obs.product_name = deals.name
-                    AND obs.observed_at < deals.scraped_at
-                    ORDER BY obs.observed_at DESC LIMIT 1)
-                   ELSE (SELECT ph.price FROM price_history ph WHERE ph.url = deals.url
-                    AND ph.observed_at < deals.scraped_at ORDER BY ph.observed_at DESC LIMIT 1) END AS previous_price
-            FROM effective deals
-            {latest_join}
-            LEFT JOIN deal_reviews dr ON deals.id = dr.deal_id
-            WHERE {where}
+            SELECT deals.*, price_signal(deals.current_price, deals.previous_price, deals.previous_at,
+                                         deals.prior_low, deals.tracked_since, deals.scraped_at) AS price_signal
+            FROM (
+                SELECT deals.*, dr.score AS review_score, dr.award AS review_award,
+                       dr.review_url AS review_url,
+                       {_prior("obs.price", "ORDER BY obs.observed_at DESC LIMIT 1")} AS previous_price,
+                       {_prior("obs.observed_at", "ORDER BY obs.observed_at DESC LIMIT 1")} AS previous_at,
+                       {_prior("MIN(obs.price)", window=True)} AS prior_low,
+                       {_prior("MIN(obs.observed_at)")} AS tracked_since
+                FROM effective deals
+                {latest_join}
+                LEFT JOIN deal_reviews dr ON deals.id = dr.deal_id
+                WHERE {where}
+            ) deals
             ORDER BY {order}
             LIMIT ? OFFSET ?
             """,
@@ -508,6 +543,7 @@ async def query_deals(
     return [
         AggregatedDeal(
             first_seen=row["first_seen"], previous_price=row["previous_price"], currency=row["currency"],
+            price_signal=row["price_signal"],
             offer_url=row['offer_url'], offer_options=row['offer_options'],
             variant_key=row['variant_key'],
             availability=row['availability'], reference_basis=row['reference_basis'],

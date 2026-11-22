@@ -480,3 +480,26 @@ def test_retailer_counts_follow_filters_and_refresh_with_htmx(isolated_app, monk
         assert select.select_one('option[selected]')['value'] == unknown
         assert select['hx-swap-oob'] == 'outerHTML:#store-filter'
         assert select.select_one('img') is None
+
+
+def test_dropped_sort_and_new_low_badge_render(isolated_app, monkeypatch):
+    from datetime import timedelta
+
+    monkeypatch.setenv("PUBLIC_MODE", "1")
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    asyncio.run(db_module.init_db(isolated_app))
+    now = datetime.now(UTC).replace(tzinfo=None)
+    for age, price in [(10, 560.0), (1, 540.0), (0, 499.99)]:
+        deal = _make_deal()
+        deal.current_price, deal.scraped_at = price, now - timedelta(days=age)
+        asyncio.run(db_module.upsert_deals([deal], isolated_app))
+    asyncio.run(db_module.upsert_deals([_make_deal("Völkl Mantra 102")], isolated_app))
+
+    with TestClient(app_module.create_app()) as client:
+        page = BeautifulSoup(client.get("/", params={"sort": "dropped"}).text, "html.parser")
+
+    assert page.select_one("select[name=sort] option[selected]")["value"] == "dropped"
+    first = page.select_one("#deal-grid article")
+    assert "Atomic Bent 100" in first.get_text()
+    assert first.select_one(".price-drop").get_text(" ", strip=True) == "New low Down $40.01 since last check"
+    assert len(page.select(".price-drop")) == 1

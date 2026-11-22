@@ -2,6 +2,7 @@
 import math
 import re
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 MAX_REFERENCE_PRICE = 99_999.0
@@ -9,6 +10,9 @@ MIN_OFFER_PRICE = 1.0
 MAX_DISCOUNT_PCT = 98.0
 SIBLING_PRICE_RATIO = 25
 SIBLING_REFERENCE_FLOOR = 250.0
+DROP_WINDOW = timedelta(hours=36)
+HISTORY_DAYS = 45
+NEW_LOW_MIN_TRACKED = timedelta(days=7)
 
 _SIZE_ALIASES = {
     'xx-small': 'xxs', 'xxsmall': 'xxs', '2x-small': 'xxs', '2xs': 'xxs',
@@ -50,6 +54,20 @@ def discount(price: float, reference: float | None) -> float:
         return 0.0
     sale, base = Decimal(str(price)), Decimal(str(reference))
     return float(100 * (base - sale) / base)
+
+
+def price_signal(price: float, previous: float | None, previous_at: str | None,
+                 low: float | None, tracked_since: str | None, observed_at: str) -> str | None:
+    """Dropped: below the same variant's previous check within the daily freshness window.
+    New low: that drop also undercuts every price kept for the variant over at least a week."""
+    if previous is None or Decimal(str(previous)) <= Decimal(str(price)):
+        return None
+    now = datetime.fromisoformat(observed_at)
+    if not timedelta(0) < now - datetime.fromisoformat(previous_at) <= DROP_WINDOW:
+        return None
+    if price < low and now - datetime.fromisoformat(tracked_since) >= NEW_LOW_MIN_TRACKED:
+        return "new_low"
+    return "dropped"
 
 
 def plausible_offer(price: float, reference: float | None, *, max_discount: float = MAX_DISCOUNT_PCT) -> bool:

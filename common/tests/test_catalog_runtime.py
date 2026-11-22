@@ -20,7 +20,7 @@ from deal_common.catalog.storage import (
 from deal_common.catalog.web import create_app
 from deal_common.config import RetailerConfig
 from deal_common.models import Product
-from deal_common.offers import VariantOffer, size_key
+from deal_common.offers import VariantOffer, price_signal, size_key
 from deal_common.parsers.shopify import ShopifyParser
 from fastapi.testclient import TestClient
 from tool_deals.catalog import CATALOG as TOOLS
@@ -613,3 +613,81 @@ def test_shopify_preorder_and_backorder_signals_prevent_false_instock_and_match_
         "options": "27.5 / Ready to Ship",
     }}
     assert validate_product(ready_card, endpoint, "USD")["status"] == "match"
+
+
+@pytest.mark.parametrize(("previous", "previous_age", "low", "tracked", "expected"), [
+    (600, timedelta(days=1), 600, timedelta(days=10), "new_low"),
+    (600, timedelta(days=1), 450, timedelta(days=10), "dropped"),
+    (600, timedelta(days=1), 600, timedelta(days=3), "dropped"),
+    (600, timedelta(hours=37), 600, timedelta(days=10), None),
+    (500, timedelta(days=1), 500, timedelta(days=10), None),
+    (500.01, timedelta(days=1), 500.01, timedelta(days=10), "new_low"),
+    (None, None, None, None, None),
+])
+def test_price_signal_requires_recent_drop_and_week_of_history_for_new_low(previous, previous_age, low, tracked, expected):
+    def stamp(age):
+        return (NOW - age).isoformat() if age is not None else None
+    assert price_signal(500, previous, stamp(previous_age), low, stamp(tracked), NOW.isoformat()) == expected
+
+
+def history_db(db, days):
+    for age, offers in days:
+        save_source(db, "cycling", "BikesOnline", (NOW - age).isoformat(),
+                    [product("Bike", offers)], "complete", {})
+    return db
+
+
+def test_selected_variant_carries_its_own_drop_and_new_low_into_sort(tmp_path):
+    db = tmp_path / "signals.db"
+    history = [(timedelta(days=9), 900, 1500), (timedelta(days=4), 800, 1500), (timedelta(days=1), 700, 1500),
+               (timedelta(0), 650, 1400)]
+    for age, low_price, steady in history:
+        save_source(db, "cycling", "BikesOnline", (NOW - age).isoformat(), [
+            product("Dropping", [offer("a", low_price, 2000, "M"), offer("b", steady, 2000, "L")]),
+            product("Steady", [offer("s", 400, 2000, "M")]),
+            product("Dipped", [offer("d", 1200 if age else 1100, 2000, "M")]),
+        ], "complete", {})
+    sources = read_sources(db, "cycling")
+    default = query(sources, filters(), now=NOW)
+    assert [c["name"] for c in default["cards"]] == ["Steady", "Dropping", "Dipped"]
+    assert default["dropped"] == 2
+    by_name = {c["name"]: c for c in default["cards"]}
+    assert (by_name["Dropping"]["price_signal"], by_name["Dropping"]["price_drop"]) == ("new_low", 50)
+    assert by_name["Dipped"]["price_signal"] == "new_low"
+    assert by_name["Steady"]["price_signal"] is None
+    dropped = query(sources, filters(sort="dropped"), now=NOW)
+    assert [c["name"] for c in dropped["cards"]] == ["Dropping", "Dipped", "Steady"]
+    large = query(sources, filters(size="L", sort="dropped"), now=NOW)
+    selected = next(c for c in large["cards"] if c["name"] == "Dropping")
+    assert selected["offer"]["variant_key"] == "b"
+    assert (selected["price_signal"], selected["price_drop"]) == ("new_low", 100)
+
+
+def test_drop_ignores_same_day_reruns_stale_previous_check_and_short_history(tmp_path):
+    db = history_db(tmp_path / "stale.db", [(timedelta(days=3), [offer(price=900)]), (timedelta(hours=5), [offer(price=800)]),
+                               (timedelta(0), [offer(price=500)])])
+    stored = read_sources(db, "cycling")[0]["products"][0]["offers"][0]["history"]
+    assert stored == {"previous_price": 900, "previous_at": (NOW - timedelta(days=3)).isoformat(),
+                      "low": 900, "tracked_since": (NOW - timedelta(days=3)).isoformat()}
+    assert query(read_sources(db, "cycling"), filters(), now=NOW)["cards"][0]["price_signal"] is None
+    recent = history_db(tmp_path / "recent.db", [(timedelta(days=2), [offer(price=900)]),
+                                                 (timedelta(days=1), [offer(price=700)]),
+                                                 (timedelta(0), [offer(price=500)])])
+    card = query(read_sources(recent, "cycling"), filters(), now=NOW)["cards"][0]
+    assert (card["price_signal"], card["price_drop"]) == ("dropped", 200)
+
+
+def test_storefront_renders_signal_badges_and_keeps_sort_in_links(tmp_path):
+    now = datetime.now(UTC)
+    db = tmp_path / "signals.db"
+    for age, price in ((timedelta(days=8), 1000), (timedelta(days=1), 900), (timedelta(0), 600)):
+        save_source(db, "cycling", "BikesOnline", (now - age).isoformat(),
+                    [product("Bike", [offer(price=price)])], "complete", {})
+    client = TestClient(create_app(CYCLING, db))
+    page = BeautifulSoup(client.get("/", params={"sort": "dropped", "min_reference": 0}).text, "html.parser")
+    assert page.select_one(".drop-pill--low").get_text() == "New low, down $300"
+    current = page.select_one(".sort-switch a[aria-current]")
+    assert current.get_text(" ", strip=True) == "Dropped in 24h 1"
+    assert page.select_one("#filters input[name=sort]")["value"] == "dropped"
+    assert parse_qs(urlsplit(page.select(".sort-switch a")[0]["href"]).query)["sort"] == ["discount"]
+    assert client.get("/", params={"sort": "price"}).status_code == 422

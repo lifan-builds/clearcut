@@ -326,3 +326,43 @@ def test_default_savings_order_groups_currencies_after_exact_percentage(tmp_path
     assert handles(sort_by='invalid') == handles()
     assert query(path, currency='USD', count_only=True) == 2
     assert query(path, currency='CAD', count_only=True) == 3
+
+
+def record(path, handle, history, *, now):
+    for age, price in history:
+        deals = _products_to_deals(products([
+            {'id': 1, 'price': str(price), 'compare_at_price': '1000', 'available': True, 'option1': '180'},
+        ], handle=handle), 'Test')
+        deals[0].scraped_at = now - timedelta(days=age)
+        asyncio.run(upsert_deals(deals, path))
+
+
+def test_dropped_sort_ranks_new_lows_then_drops_then_discount_depth(tmp_path):
+    path = tmp_path / 'signals.db'
+    asyncio.run(init_db(path))
+    now = datetime.now(UTC).replace(tzinfo=None)
+    record(path, 'steady', [(10, 200), (1, 200), (0, 200)], now=now)
+    record(path, 'dropping', [(10, 500), (1, 450), (0, 350)], now=now)
+    record(path, 'dipped', [(10, 300), (1, 500), (0, 400)], now=now)
+    record(path, 'stale', [(10, 500), (3, 450), (0, 380)], now=now)
+    default = query(path)
+    assert [d.url.split('/')[-1].split('?')[0] for d in default] == ['steady', 'dropping', 'stale', 'dipped']
+    signals = {d.url.split('/')[-1].split('?')[0]: (d.price_signal, d.previous_price) for d in default}
+    assert signals == {'steady': (None, 200), 'dropping': ('new_low', 450), 'dipped': ('dropped', 500),
+                       'stale': (None, 450)}
+    dropped = query(path, sort_by='dropped')
+    assert [d.url.split('/')[-1].split('?')[0] for d in dropped] == ['dropping', 'dipped', 'steady', 'stale']
+    assert query(path, sort_by='dropped', count_only=True) == 4
+
+
+def test_single_price_new_low_uses_only_the_recent_daily_window(tmp_path):
+    path = tmp_path / 'legacy-signals.db'
+    asyncio.run(init_db(path))
+    now = datetime.now(UTC).replace(tzinfo=None)
+    for age, price in [(60, 100), (10, 300), (1, 280), (0, 250)]:
+        deal = AggregatedDeal(None, 'Test', 'Legacy Skis 2017', 'https://shop.test/legacy', price, 1000,
+                              100 - price / 10, 'skis', '160cm', 160, 160, now - timedelta(days=age))
+        asyncio.run(upsert_deals([deal], path))
+    selected = query(path)[0]
+    assert selected.variant_key is None
+    assert (selected.price_signal, selected.previous_price) == ('new_low', 280)

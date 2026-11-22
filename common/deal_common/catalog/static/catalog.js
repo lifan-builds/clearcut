@@ -43,7 +43,7 @@
   const container = document.getElementById("saved-searches");
   const status = document.getElementById("save-status");
   const key = `deal-aggregator:${slug}:searches`;
-  const allowed = new Set(["q", "category", "brand", "store", "size", "format", "platform", "min_reference", "max_price", "min_discount", "stock"]);
+  const allowed = new Set(["q", "category", "brand", "store", "size", "format", "platform", "min_reference", "max_price", "min_discount", "stock", "sort"]);
   let saved = [];
   try {
     const parsed = JSON.parse(localStorage.getItem(key) || "[]");
@@ -110,6 +110,7 @@
         Number(params.get("max_price")) > 0 ? `Up to $${params.get("max_price")}` : "",
         Number(params.get("min_discount")) > 0 ? `${params.get("min_discount")}%+ off` : "",
         params.get("stock") === "true" ? "In stock" : "",
+        params.get("sort") === "dropped" ? "Dropped in 24h" : "",
       ]
         .filter(Boolean)
         .join(" · ") || "My deal search";

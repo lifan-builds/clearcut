@@ -8,11 +8,14 @@ from deal_common.offers import (
     is_addon_variant,
     is_price_collapse_addon,
     plausible_offer,
+    price_signal,
     size_key,
 )
 
 PAGE_SIZE = 24
 FRESHNESS_HOURS = 36
+SORTS = {"discount": "deepest % off", "dropped": "dropped in 24h"}
+SIGNAL_RANK = {"new_low": 0, "dropped": 1, None: 2}
 
 
 def is_fresh(timestamp: str | None, now: datetime) -> bool:
@@ -87,17 +90,24 @@ def query(sources: list[dict], filters: dict, *, now: datetime | None = None,
             if not eligible:
                 continue
             best = min(eligible, key=lambda o: (-o["discount"], -o["savings"], o["current_price"], o["variant_key"]))
+            history = best.get("history") or {}
+            signal = price_signal(best["current_price"], history.get("previous_price"), history.get("previous_at"),
+                                  history.get("low"), history.get("tracked_since"), source["successful_at"])
             cards.append({**product, "brand": brand, "offer": best, "store": source["name"],
-                          "observed_at": source["successful_at"], "matching_variants": len(eligible)})
+                          "observed_at": source["successful_at"], "matching_variants": len(eligible),
+                          "price_signal": signal,
+                          "price_drop": round(history["previous_price"] - best["current_price"], 2) if signal else 0})
     size_labels = {}
     for label in sorted(facets["size"], key=lambda value: (len(value), value.casefold(), value)):
         size_labels.setdefault(size_key(label), label)
     facets["size"] = set(size_labels.values())
-    cards.sort(key=lambda p: (-p["offer"]["discount"], -p["offer"]["savings"], p["name"], p["url"]))
+    cards.sort(key=lambda p: (SIGNAL_RANK[p["price_signal"]] if filters.get("sort") == "dropped" else 0,
+                              -p["offer"]["discount"], -p["offer"]["savings"], p["name"], p["url"]))
     total = len(cards)
     pages = max(1, ceil(total / PAGE_SIZE))
     page = min(filters["page"], pages)
     return {"cards": cards[(page - 1) * PAGE_SIZE:page * PAGE_SIZE], "total": total,
             "page": page, "pages": pages, "fresh_sources": fresh_sources,
             "facets": {key: sorted(values) for key, values in facets.items()},
+            "dropped": sum(card["price_signal"] is not None for card in cards),
             "top_discount": cards[0]["offer"]["discount"] if cards else 0}
