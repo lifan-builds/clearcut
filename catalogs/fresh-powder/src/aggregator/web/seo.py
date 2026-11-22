@@ -56,8 +56,8 @@ def network_urls() -> dict[str, str]:
         "snow": site_url(),
         "cycling": os.environ.get("CYCLING_SITE_URL", "https://bigring.clifan.com").rstrip("/"),
         "tools": os.environ.get("TOOLS_SITE_URL", "https://benchdrop.clifan.com").rstrip("/"),
-        "camp": os.environ.get("CAMP_SITE_URL", "https://highline-weld.vercel.app").rstrip("/"),
-        "watersports": os.environ.get("WATER_SITE_URL", "https://tideline-one-blue.vercel.app").rstrip("/"),
+        "camp": os.environ.get("CAMP_SITE_URL", "https://highline.clifan.com").rstrip("/"),
+        "watersports": os.environ.get("WATER_SITE_URL", "https://tideline.clifan.com").rstrip("/"),
     }
 
 

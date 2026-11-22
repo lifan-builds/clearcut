@@ -50,9 +50,11 @@ async def fetch_listing(client: httpx.AsyncClient, url: str, delay: float,
                 try:
                     seconds = (parsedate_to_datetime(retry_after) - datetime.now(UTC)).total_seconds()
                 except (ValueError, TypeError):
-                    seconds = 2 ** (attempt + 2) + random.random()
+                    seconds = 8 * (2 ** attempt) + random.random()
             if seconds > 60:
                 response.raise_for_status()
+            if attempt >= 1 and seconds > 0:
+                seconds = min(60.0, max(seconds, 8 * (2 ** attempt) + random.random()))
             await asyncio.sleep(max(0, seconds))
         except httpx.TransportError:
             if attempt == 3:

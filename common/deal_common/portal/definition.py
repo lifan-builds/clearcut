@@ -172,8 +172,8 @@ def default_portal_catalogs(
     snow_url = snow_url or os.environ.get("SNOW_SITE_URL", "https://freshpowder.clifan.com")
     cycling_url = cycling_url or os.environ.get("CYCLING_SITE_URL", "https://bigring.clifan.com")
     tools_url = tools_url or os.environ.get("TOOLS_SITE_URL", "https://benchdrop.clifan.com")
-    camp_url = camp_url or os.environ.get("CAMP_SITE_URL", "https://highline-weld.vercel.app")
-    watersports_url = watersports_url or os.environ.get("WATER_SITE_URL", "https://tideline-one-blue.vercel.app")
+    camp_url = camp_url or os.environ.get("CAMP_SITE_URL", "https://highline.clifan.com")
+    watersports_url = watersports_url or os.environ.get("WATER_SITE_URL", "https://tideline.clifan.com")
     return (
         PortalCatalog(
             slug="snow",
