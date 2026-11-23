@@ -1,7 +1,7 @@
 """Tests for SQLite database operations."""
 
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 from aggregator.db import (
@@ -34,7 +34,7 @@ def _make_deal(name="Atomic Bent 100", store="Evo", price=499.99, orig=599.99, s
         sizes=kw.get("sizes"),
         length_min=kw.get("length_min"),
         length_max=kw.get("length_max"),
-        scraped_at=scraped_at or datetime.now(),
+        scraped_at=scraped_at or datetime.now(UTC).replace(tzinfo=None),
     )
 
 
@@ -94,7 +94,7 @@ class TestDB:
         async def _run():
             await init_db(db_path)
             # brand column is populated at scrape time via _extract_brand; set explicitly here
-            now = datetime.now()
+            now = datetime.now(UTC).replace(tzinfo=None)
             atomic = _make_deal("Atomic Bent 100", url="https://example.com/atomic", scraped_at=now)
             atomic.brand = "atomic"
             salomon = _make_deal("Salomon QST 98", url="https://example.com/salomon", scraped_at=now)
@@ -117,7 +117,7 @@ class TestDB:
                 "award": "Editors' Choice",
                 "review_url": "https://ogl.com/atomic-bent-100",
                 "category": "skis",
-                "scraped_at": datetime.now().isoformat(),
+                "scraped_at": datetime.now(UTC).replace(tzinfo=None).isoformat(),
             }]
             count = await upsert_reviews(reviews, db_path)
             assert count == 1
@@ -131,7 +131,7 @@ class TestDB:
     def test_store_status(self, db_path):
         async def _run():
             await init_db(db_path)
-            now = datetime.now()
+            now = datetime.now(UTC).replace(tzinfo=None)
             await upsert_deals([
                 _make_deal("Atomic Bent 100", "Evo", scraped_at=now),
                 _make_deal("Salomon QST 98", "Evo", url="https://example.com/qst", scraped_at=now),
@@ -147,7 +147,7 @@ class TestDB:
     def test_text_search(self, db_path):
         async def _run():
             await init_db(db_path)
-            now = datetime.now()
+            now = datetime.now(UTC).replace(tzinfo=None)
             await upsert_deals([
                 _make_deal("Atomic Bent 100", scraped_at=now),
                 _make_deal("Salomon QST 98", url="https://example.com/qst", scraped_at=now),
@@ -162,7 +162,7 @@ class TestDB:
     def test_min_discount_filter(self, db_path):
         async def _run():
             await init_db(db_path)
-            now = datetime.now()
+            now = datetime.now(UTC).replace(tzinfo=None)
             await upsert_deals([
                 _make_deal("Big Discount", price=300, orig=600, scraped_at=now),  # 50% off
                 _make_deal("Small Discount", price=550, orig=600, url="https://example.com/small", scraped_at=now),  # ~8% off
@@ -179,7 +179,7 @@ def test_default_ranking_puts_deepest_discount_before_image_availability(tmp_pat
     async def run():
         path = tmp_path / 'nested' / 'deals.db'
         await init_db(path)
-        now = datetime.now()
+        now = datetime.now(UTC).replace(tzinfo=None)
         deep = _make_deal('Deep discount without image', price=300, orig=1000, scraped_at=now)
         shallow = _make_deal('Shallower discount with image', price=500, orig=1000, scraped_at=now)
         shallow.image_url = 'https://example.com/image.jpg'

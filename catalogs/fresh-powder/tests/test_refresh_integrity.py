@@ -1,7 +1,7 @@
 """Regression checks for real offer prices, persistent history and refresh failures."""
 import asyncio
 import json
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import aiosqlite
 import httpx
@@ -77,8 +77,8 @@ def test_history_first_seen_and_currency_queries(tmp_path):
     async def run():
         path = tmp_path / "deals.db"
         await init_db(path)
-        first = datetime.now() - timedelta(days=1)
-        now = datetime.now()
+        first = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=1)
+        now = datetime.now(UTC).replace(tzinfo=None)
         await upsert_deals([make_deal("https://example.com/old", 500, first)], path)
         await upsert_deals([make_deal("https://example.com/old", 400, now),
                             make_deal("https://example.com/new", 600, now),

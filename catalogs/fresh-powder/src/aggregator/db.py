@@ -572,7 +572,7 @@ async def query_deals(
 
 async def upsert_reviews(reviews: list, db_path: Path = DB_PATH) -> int:
     """Insert or update reviews. Accepts dicts or ReviewData NamedTuples."""
-    now = datetime.now().isoformat()
+    now = datetime.now(UTC).replace(tzinfo=None).isoformat()
     async with _connect(db_path) as db:
         count = 0
         for r in reviews:

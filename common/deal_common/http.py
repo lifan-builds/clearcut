@@ -88,6 +88,7 @@ async def fetch_products(store: RetailerConfig, parser: BaseParser, client: http
     products: list[Product] = []
     details_seen: set[str] = set()
     domain_rate_limited = False
+    json_pages = 0
 
     for url in store.scrape_urls:
         page = 0
@@ -130,8 +131,11 @@ async def fetch_products(store: RetailerConfig, parser: BaseParser, client: http
             async with semaphore:
                 log.info("[%s] Fetching page %d: %s", store.name, page, current_url)
                 try:
-                    listing_delay = max(delay, 6.0) if (page >= 2 and delay > 0 and "/products.json" in current_url) else delay
+                    is_json_feed = "/products.json" in current_url
+                    listing_delay = max(delay, 6.0) if (is_json_feed and json_pages >= 1 and delay > 0) else delay
                     resp = await fetch_listing(client, current_url, listing_delay)
+                    if is_json_feed:
+                        json_pages += 1
                     outcome["pages"] += 1
                     collection["pages"] += 1
                 except httpx.HTTPError as exc:

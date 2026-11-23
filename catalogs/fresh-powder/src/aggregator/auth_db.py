@@ -16,7 +16,7 @@ import os
 import secrets
 import sqlite3
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from aggregator.config import env_flag
@@ -132,7 +132,7 @@ async def init_auth_db() -> None:
 
 async def create_invite_codes(codes: list[str], max_uses: int = 5) -> int:
     """Insert invite codes. Returns count created."""
-    now = datetime.now().isoformat()
+    now = datetime.now(UTC).replace(tzinfo=None).isoformat()
     conn = _get_conn()
     created = 0
     for code in codes:
@@ -168,7 +168,7 @@ async def validate_invite_code(code: str) -> bool:
 
 async def record_code_use(code: str) -> None:
     """Record that an invite code was used (insert a session row for counting)."""
-    now = datetime.now().isoformat()
+    now = datetime.now(UTC).replace(tzinfo=None).isoformat()
     token = secrets.token_urlsafe(16)
     conn = _get_conn()
     conn.execute(
@@ -209,7 +209,7 @@ async def log_event(
     metadata: str | None = None,
 ) -> None:
     """Log a user event (page view, click, filter, etc.)."""
-    now = datetime.now().isoformat()
+    now = datetime.now(UTC).replace(tzinfo=None).isoformat()
     conn = _get_conn()
     conn.execute(
         "INSERT INTO events (event_type, session, deal_url, deal_name, store, category, metadata, created_at) "
@@ -222,7 +222,7 @@ async def log_event(
 
 async def get_click_stats(days: int = 7) -> dict:
     """Get click-through statistics for the admin dashboard."""
-    cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+    cutoff = (datetime.now(UTC).replace(tzinfo=None) - timedelta(days=days)).isoformat()
     conn = _get_conn()
 
     by_type = [
@@ -333,7 +333,7 @@ async def get_click_stats(days: int = 7) -> dict:
 
 async def add_to_waitlist(email: str) -> bool:
     """Add an email to the waitlist. Returns True if added, False if already present."""
-    now = datetime.now().isoformat()
+    now = datetime.now(UTC).replace(tzinfo=None).isoformat()
     conn = _get_conn()
     try:
         conn.execute(

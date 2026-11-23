@@ -56,3 +56,6 @@ include = ["deal_common*", "aggregator*", "cycling_deals*", "tool_deals*", "camp
 [tool.pytest.ini_options]
 testpaths = ["common/tests", "catalogs/fresh-powder/tests", "catalogs/cycling/tests", "catalogs/tools/tests", "catalogs/camp/tests", "catalogs/watersports/tests"]
 pythonpath = ["common", "catalogs/fresh-powder/src", "catalogs/cycling/src", "catalogs/tools/src", "catalogs/camp/src", "catalogs/watersports/src"]
+
+[tool.ruff.lint]
+extend-select = ["DTZ005"]

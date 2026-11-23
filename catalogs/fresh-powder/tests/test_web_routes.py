@@ -31,7 +31,7 @@ def _make_deal(name: str = "Atomic Bent 100", store: str = "Evo") -> AggregatedD
         sizes=None,
         length_min=None,
         length_max=None,
-        scraped_at=datetime.now(),
+        scraped_at=datetime.now(UTC).replace(tzinfo=None),
     )
 
 
@@ -263,7 +263,7 @@ def test_public_category_seo_and_pagination(isolated_app, monkeypatch):
 def test_catalog_clothing_preference_counts_and_pagination(isolated_app, monkeypatch):
     from bs4 import BeautifulSoup
     monkeypatch.setenv('PUBLIC_MODE', '1')
-    now = datetime.now()
+    now = datetime.now(UTC).replace(tzinfo=None)
     deals = [_make_deal(f'Ski {i}') for i in range(61)]
     for category in ('jackets', 'pants', 'layers', 'helmets', 'goggles', 'accessories', 'gloves', 'boots', None):
         deal = _make_deal(f'Item {category}')
@@ -414,7 +414,7 @@ def test_signup_html_errors_and_removal_failure_are_recoverable(isolated_app, mo
 def test_retailer_counts_follow_filters_and_refresh_with_htmx(isolated_app, monkeypatch):
     monkeypatch.setenv('PUBLIC_MODE', '1')
     monkeypatch.setenv('ADMIN_KEY', 'offline-only-test-admin')
-    now = datetime.now()
+    now = datetime.now(UTC).replace(tzinfo=None)
     evo = _make_deal('Atomic Evo Skis', 'Evo')
     competing = _make_deal('Atomic Competing Skis', 'Backcountry')
     jacket = _make_deal('Atomic Shell Jacket', 'Evo')
