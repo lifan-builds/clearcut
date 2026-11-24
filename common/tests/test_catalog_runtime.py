@@ -155,16 +155,25 @@ def test_real_parser_refresh_to_web_variant_flow(tmp_path):
 def test_empty_read_only_sites_assets_validation_and_escaping(tmp_path, catalog):
     db = tmp_path / "absent.db"
     client = TestClient(create_app(catalog, db))
-    assert client.get("/").status_code == 200
+    home = client.get("/")
+    assert home.status_code == 200
+    assert home.headers["CDN-Cache-Control"] == "public, s-maxage=86400, stale-while-revalidate=3600"
     assert not db.exists()
-    assert "Fresh deals are on their way" in client.get("/").text
-    assert catalog.name in client.get("/sources").text
+    assert "Fresh deals are on their way" in home.text
+    sources_resp = client.get("/sources")
+    assert catalog.name in sources_resp.text
+    assert sources_resp.headers["CDN-Cache-Control"] == "public, s-maxage=86400, stale-while-revalidate=3600"
+    health = client.get("/healthz")
+    assert health.headers["Cache-Control"] == "no-store"
+    assert "CDN-Cache-Control" not in health.headers
     assert client.get("/static/catalog.css").status_code == 200
     assert client.get("/static/catalog.js").status_code == 200
     assert client.get("/brand/hero.svg").status_code == 200
     assert client.get("/brand/brand.css").status_code == 200
     for bad in ("min_discount=-1", "min_reference=nan", "max_price=inf", "page=0"):
-        assert client.get("/?" + bad).status_code == 422
+        bad_resp = client.get("/?" + bad)
+        assert bad_resp.status_code == 422
+        assert "CDN-Cache-Control" not in bad_resp.headers
     page = client.get("/", params={"q": '<script>alert("x")</script>'})
     assert '<script>alert("x")</script>' not in page.text
     assert "noindex" in page.headers["X-Robots-Tag"]

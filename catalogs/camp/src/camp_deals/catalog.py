@@ -75,7 +75,7 @@ def _shopify(name: str, domain: str, *collections: str, limit: int = 250) -> Ret
     return RetailerConfig(
         name=name,
         domain=domain,
-        scrape_urls=[f"https://{domain}/collections/{c}" for c in collections],
+        scrape_urls=[f"https://{domain}/collections/{c}?currency=USD" for c in collections],
         shopify_products_limit=limit,
     )
 

@@ -25,6 +25,10 @@ def test_build_copies_catalog_assets_and_checks_only_fixture_database(tmp_path, 
     build.copy_static_assets()
     assert (build.STATIC_DEST / 'style.css').read_bytes() == (build.STATIC_SRC / 'style.css').read_bytes()
     assert (build.STATIC_DEST / 'img/favicon.ico').is_file()
+    portal_dest = build.STATIC_DEST.parent / 'portal-static'
+    assert (portal_dest / 'portal.css').read_bytes() == (build.PORTAL_STATIC_SRC / 'portal.css').read_bytes()
+    assert (portal_dest / 'portal.js').read_bytes() == (build.PORTAL_STATIC_SRC / 'portal.js').read_bytes()
+    assert (portal_dest / 'img/snow-card.jpg').is_file()
     db = tmp_path / 'fixture.db'
     with sqlite3.connect(db) as conn:
         conn.execute('CREATE TABLE deals (scraped_at TEXT)')

@@ -62,6 +62,8 @@ def package(slug: str, database: Path, output: Path, public_url: str | None = No
     ignore = shutil.ignore_patterns("__pycache__", "*.pyc")
     shutil.copytree(ROOT / "common/deal_common", output / "src/deal_common", ignore=ignore)
     shutil.copytree(ROOT / f"catalogs/{slug}/src/{module}", output / f"src/{module}", ignore=ignore)
+    shutil.copytree(ROOT / "common/deal_common/catalog/static", output / "public/static", ignore=ignore)
+    shutil.copytree(ROOT / f"catalogs/{slug}/src/{module}/static", output / "public/brand", ignore=ignore)
     # Preserve real observations across releases; never reset history to the
     # latest snapshot, and never copy unrelated source/operational tables.
     with open_database(database, slug) as original, open_database(output / "data/catalog.db", slug, writable=True) as bundled, bundled:
@@ -91,6 +93,17 @@ def package(slug: str, database: Path, output: Path, public_url: str | None = No
         "buildCommand": "",
         "functions": {"api/index.py": {"includeFiles": "{src/**,data/catalog.db}"}},
         "rewrites": [{"source": "/(.*)", "destination": "/api/index.py"}],
+        "headers": [
+            {
+                "source": "/(static|brand)/(.*)",
+                "headers": [
+                    {
+                        "key": "Cache-Control",
+                        "value": "public, max-age=86400, stale-while-revalidate=3600",
+                    }
+                ],
+            }
+        ],
     }, indent=2) + "\n")
     receipt = {"catalog": slug, "brand": CATALOG.name, "built_at": now.isoformat(),
                    "snapshot_sha256": snapshot_health(CATALOG, selected, now=now)["snapshot_sha256"],

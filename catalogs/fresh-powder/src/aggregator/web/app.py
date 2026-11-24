@@ -8,6 +8,7 @@ import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from deal_common.cache_headers import apply_cdn_cache_headers
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import (
     http_exception_handler,
@@ -99,7 +100,19 @@ def create_app(*, enable_lifespan: bool | None = None) -> FastAPI:
             },
         )
 
+    async def cdn_cache_middleware(request: Request, call_next):
+        response = await call_next(request)
+        is_public_request = (
+            auth.is_public_mode()
+            and not request.cookies.get(auth.SESSION_COOKIE)
+            and not request.cookies.get("admin_key")
+            and "admin_key" not in request.query_params
+        )
+        apply_cdn_cache_headers(request, response, is_public=is_public_request)
+        return response
+
     app.add_middleware(BaseHTTPMiddleware, dispatch=auth_middleware)
+    app.add_middleware(BaseHTTPMiddleware, dispatch=cdn_cache_middleware)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     app.include_router(invite_router)
     app.include_router(admin_router)

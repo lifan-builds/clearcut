@@ -18,6 +18,7 @@ from urllib.request import urlopen
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "catalogs" / "fresh-powder"
 STATIC_SRC = CATALOG / "src" / "aggregator" / "web" / "static"
+PORTAL_STATIC_SRC = ROOT / "common" / "deal_common" / "portal" / "static"
 STATIC_DEST = ROOT / "public" / "static"
 DB_DEST = CATALOG / "data" / "deals.db"
 DEFAULT_DB_URL = (
@@ -35,6 +36,12 @@ def copy_static_assets() -> None:
         shutil.rmtree(STATIC_DEST)
     shutil.copytree(STATIC_SRC, STATIC_DEST)
     log(f"Copied static assets to {STATIC_DEST.relative_to(ROOT)}")
+
+    portal_dest = STATIC_DEST.parent / "portal-static"
+    if portal_dest.exists():
+        shutil.rmtree(portal_dest)
+    shutil.copytree(PORTAL_STATIC_SRC, portal_dest)
+    log(f"Copied portal static assets to {portal_dest.relative_to(ROOT)}")
 
 
 def validate_sqlite_db(db_path: Path) -> tuple[int, str | None]:

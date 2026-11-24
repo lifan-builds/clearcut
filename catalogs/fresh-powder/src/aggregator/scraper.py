@@ -336,7 +336,7 @@ async def scrape_all(
 
     all_deals: list[AggregatedDeal] = []
     http_limit = asyncio.Semaphore(4)
-    shopify_limit = asyncio.Semaphore(2)
+    shopify_limit = asyncio.Semaphore(1)
     browser_limit = asyncio.Semaphore(3)
 
     async def bounded_http(store, client):

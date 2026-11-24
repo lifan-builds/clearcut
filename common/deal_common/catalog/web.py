@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from deal_common.cache_headers import apply_cdn_cache_headers
 from deal_common.catalog.definition import Catalog, manufacturer_name
 from deal_common.catalog.health import snapshot_health
 from deal_common.catalog.query import FRESHNESS_HOURS, SORTS, is_fresh, query
@@ -57,6 +58,7 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
         )
         if not base_url or request.url.query or request.url.path == "/healthz":
             response.headers["X-Robots-Tag"] = "noindex, nofollow"
+        apply_cdn_cache_headers(request, response)
         return response
 
     @app.get("/", response_class=HTMLResponse)
@@ -176,7 +178,8 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
             "catalog": catalog, "sources": health, "freshness_hours": FRESHNESS_HOURS})
 
     @app.get("/healthz")
-    def health():
+    def health(response: Response):
+        response.headers["Cache-Control"] = "no-store"
         return snapshot_health(catalog, sources())
 
     @app.get("/robots.txt", response_class=PlainTextResponse)

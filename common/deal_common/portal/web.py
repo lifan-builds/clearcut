@@ -15,6 +15,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from deal_common.cache_headers import apply_cdn_cache_headers
 from deal_common.portal.definition import PortalCatalog, default_portal_catalogs
 
 PORTAL_DIR = Path(__file__).parent
@@ -52,6 +53,7 @@ def create_portal_app(
         )
         if not base_url or request.url.query or request.url.path in {"/healthz", "/go"}:
             response.headers["X-Robots-Tag"] = "noindex, nofollow"
+        apply_cdn_cache_headers(request, response)
         return response
 
     @app.get("/", response_class=HTMLResponse)

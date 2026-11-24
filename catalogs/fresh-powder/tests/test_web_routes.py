@@ -505,3 +505,36 @@ def test_dropped_sort_and_new_low_badge_render(isolated_app, monkeypatch):
     assert "Atomic Bent 100" in first.get_text()
     assert first.select_one(".price-drop").get_text(" ", strip=True) == "New low Down $40.01 since last check"
     assert len(page.select(".price-drop")) == 1
+
+
+def test_cdn_cache_headers_on_public_html_htmx_and_excluded_routes(isolated_app, monkeypatch):
+    monkeypatch.setenv("PUBLIC_MODE", "1")
+    monkeypatch.setenv("ADMIN_KEY", "test-admin-secret")
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    asyncio.run(db_module.init_db(isolated_app))
+    asyncio.run(db_module.upsert_deals([_make_deal()], isolated_app))
+
+    expected = "public, s-maxage=86400, stale-while-revalidate=3600"
+    with TestClient(app_module.create_app()) as client:
+        for path in ("/", "/deals", "/alerts", "/guides", "/products", "/status", "/privacy"):
+            resp = client.get(path)
+            assert resp.status_code == 200
+            assert resp.headers.get("CDN-Cache-Control") == expected, path
+
+        for excluded in ("/healthz", "/alerts/remove", "/alerts/unsubscribe?email=a@b.com&sig=bad"):
+            resp = client.get(excluded)
+            assert "CDN-Cache-Control" not in resp.headers, excluded
+
+        admin_redirect = client.get("/admin/codes", follow_redirects=False)
+        assert "CDN-Cache-Control" not in admin_redirect.headers
+        admin_ok = client.get("/admin/codes", params={"admin_key": "test-admin-secret"})
+        assert admin_ok.status_code == 200
+        assert "CDN-Cache-Control" not in admin_ok.headers
+        admin_home = client.get("/", params={"admin_key": "test-admin-secret"})
+        assert "CDN-Cache-Control" not in admin_home.headers
+
+    monkeypatch.setenv("PUBLIC_MODE", "0")
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key-at-least-32-characters")
+    with TestClient(app_module.create_app()) as private_client:
+        assert "CDN-Cache-Control" not in private_client.get("/").headers
+        assert "CDN-Cache-Control" not in private_client.get("/invite").headers

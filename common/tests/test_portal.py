@@ -26,6 +26,7 @@ def test_portal_homepage_assets_and_validated_handoff_redirects(tmp_path):
     for world_name in ("FreshPowder", "Big Ring", "Bench Drop", "Highline", "Tideline"):
         assert world_name in home.text
     assert "default-src 'self'" in home.headers["Content-Security-Policy"]
+    assert home.headers["CDN-Cache-Control"] == "public, s-maxage=86400, stale-while-revalidate=3600"
     assert "X-Robots-Tag" not in home.headers
 
     cycling_tab = client.get("/?catalog=cycling")
@@ -36,12 +37,15 @@ def test_portal_homepage_assets_and_validated_handoff_redirects(tmp_path):
     assert client.get("/portal-static/portal.css").status_code == 200
     assert client.get("/portal-static/portal.js").status_code == 200
     assert client.get("/static/fonts/Manrope.ttf").status_code == 200
-    assert client.get("/healthz").json() == {"status": "ready", "service": "clearcut-portal", "catalogs": 5}
+    health = client.get("/healthz")
+    assert health.json() == {"status": "ready", "service": "clearcut-portal", "catalogs": 5}
+    assert "CDN-Cache-Control" not in health.headers
     assert "Sitemap: https://clearcut.clifan.com/sitemap.xml" in client.get("/robots.txt").text
     assert "https://clearcut.clifan.com/" in client.get("/sitemap.xml").text
 
     snow_go = client.get("/go", params={"catalog": "snow", "q": "QST 98", "size": "178", "min_discount": "50"}, follow_redirects=False)
     assert snow_go.status_code == 302
+    assert "CDN-Cache-Control" not in snow_go.headers
     assert snow_go.headers["location"] == "https://freshpowder.clifan.com/?q=QST+98&size=178&min_discount=50"
 
     bike_go = client.get("/go", params={"catalog": "cycling", "q": "Cervelo", "size": "54cm"}, follow_redirects=False)

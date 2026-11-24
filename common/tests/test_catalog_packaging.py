@@ -42,7 +42,13 @@ def test_standalone_bundle_contains_only_selected_catalog_and_serves(tmp_path):
     assert (output / "src/tool_deals/catalog.py").exists()
     assert not (output / "src/cycling_deals").exists()
     assert not list(output.rglob(".env*"))
-    assert json.loads((output / "vercel.json").read_text())["rewrites"][0]["destination"] == "/api/index.py"
+    assert (output / "public/static/catalog.css").is_file()
+    assert (output / "public/static/catalog.js").is_file()
+    assert (output / "public/brand/brand.css").is_file()
+    assert (output / "public/brand/img/tools-banner.jpg").is_file()
+    packaged_vercel = json.loads((output / "vercel.json").read_text())
+    assert packaged_vercel["rewrites"][0]["destination"] == "/api/index.py"
+    assert packaged_vercel["headers"][0]["source"] == "/(static|brand)/(.*)"
     result = subprocess.run([sys.executable, "-c", """
 from api.index import app
 from fastapi.testclient import TestClient
