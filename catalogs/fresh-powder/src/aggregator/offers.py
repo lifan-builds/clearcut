@@ -35,12 +35,25 @@ async def write_offers(db, deal):
         ))
 
 
+def _sql_discount(price_col: str, ref_col: str) -> str:
+    """Native SQLite discount % matching Decimal cent precision without Python UDF overhead."""
+    return (
+        f"CASE WHEN {ref_col} IS NOT NULL AND {price_col} > 0 AND {ref_col} > {price_col} "
+        f"THEN CASE WHEN ROUND({price_col} * 100) / 100.0 = {price_col} "
+        f"AND ROUND({ref_col} * 100) / 100.0 = {ref_col} "
+        f"THEN (ROUND({ref_col} * 100) - ROUND({price_col} * 100)) * 100.0 / ROUND({ref_col} * 100) "
+        f"ELSE ({ref_col} - {price_col}) * 100.0 / {ref_col} END "
+        f"ELSE 0.0 END"
+    )
+
+
 def selection_sql(*, size='', size_min=None, size_max=None, min_price=0, max_price=0,
                   min_reference=0, min_discount=0):
     # Old snapshots cache rounded percentages. Derive decisions from their prices
-    # without migrating the snapshot or altering historical observations.
-    pct = 'price_discount(o.current_price, o.original_price)'
-    conditions = ['o.current_price >= 1', 'o.original_price < 99999', f'{pct} > 0', f'{pct} < 95']
+    # in native SQLite arithmetic without Python UDF overhead or altering history.
+    pct = _sql_discount('o.current_price', 'o.original_price')
+    deal_pct = _sql_discount('d.current_price', 'd.original_price')
+    conditions = ['d.exclusion_reason IS NULL', 'o.current_price >= 1', 'o.original_price < 99999', f'{pct} > 0', f'{pct} < 95']
     params = []
     for sql, value in [('o.current_price >= ?', min_price), ('o.current_price <= ?', max_price),
                        ('o.original_price >= ?', min_reference), (f'{pct} >= ?', min_discount)]:
@@ -59,7 +72,7 @@ def selection_sql(*, size='', size_min=None, size_max=None, min_price=0, max_pri
     columns = ', '.join('d.' + field for field in fields)
     for field in ['current_price', 'original_price', 'image_url']:
         columns += f', CASE WHEN o.product_url IS NOT NULL THEN o.{field} ELSE d.{field} END AS {field}'
-    columns += f', CASE WHEN o.product_url IS NOT NULL THEN {pct} ELSE price_discount(d.current_price, d.original_price) END AS discount_pct'
+    columns += f', CASE WHEN o.product_url IS NOT NULL THEN {pct} ELSE {deal_pct} END AS discount_pct'
     columns += ', CASE WHEN o.product_url IS NOT NULL THEN o.size ELSE d.sizes END AS sizes'
     columns += ", o.url AS offer_url, o.variant_key, o.options AS offer_options, COALESCE(o.availability, 'unknown') AS availability, COALESCE(o.reference_basis, 'retailer_reference') AS reference_basis"
     return f"""WITH ranked_offers AS (

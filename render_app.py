@@ -21,12 +21,6 @@ for rel in (
         sys.path.insert(0, path_text)
 
 DATA_DIR = Path(os.environ.get("CLEARCUT_DATA_DIR", ROOT / "data"))
-if "DATABASE_PATH" not in os.environ and (DATA_DIR / "deals.db").is_file():
-    os.environ["DATABASE_PATH"] = str(DATA_DIR / "deals.db")
-os.environ.setdefault("DEALS_DB_READ_ONLY", "1")
-os.environ.setdefault("DISABLE_APP_LIFESPAN", "1")
-os.environ.setdefault("TURSO_DIRECT_CONNECTION", "1")
-os.environ.setdefault("AUTH_DB_PATH", "/tmp/auth_replica.db")
 
 from aggregator.web.app import create_app as create_snow_app
 from deal_common.catalog.web import create_app as create_catalog_app

@@ -62,6 +62,10 @@ def _prepare_deals_db(path: Path) -> None:
         conn.execute("DELETE FROM price_history WHERE url NOT IN (SELECT url FROM deals)")
         conn.execute("DELETE FROM deal_reviews WHERE deal_id NOT IN (SELECT id FROM deals)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_deals_store_scraped ON deals(store, scraped_at)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_offer_obs_lookup "
+            "ON offer_observations(product_url, variant_key, currency, product_name, observed_at DESC)"
+        )
         conn.commit()
         conn.execute("VACUUM")
     print(f"[render_prepare] deals.db compacted to {path.stat().st_size:,} bytes", flush=True)
