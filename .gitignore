@@ -32,3 +32,4 @@ media/
 .local/
 
 .vercel
+cloudflare/edge-proxy/.wrangler/
