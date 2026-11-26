@@ -47,12 +47,14 @@ def isolated_app(tmp_path, monkeypatch):
     async def _init_test_db():
         await db_module.init_db(deals_db)
 
+    monkeypatch.setattr(db_module, "DB_PATH", deals_db)
     monkeypatch.setattr(app_module, "init_db", _init_test_db)
     monkeypatch.setattr(routes_module, "query_deals", partial(db_module.query_deals, db_path=deals_db))
     monkeypatch.setattr(routes_module, "get_brands", partial(db_module.get_brands, db_path=deals_db))
     monkeypatch.setattr(routes_module, "get_category_counts", partial(db_module.get_category_counts, db_path=deals_db))
     monkeypatch.setattr(routes_module, "count_with_length", partial(db_module.count_with_length, db_path=deals_db))
     monkeypatch.setattr(routes_module, "store_status", partial(db_module.store_status, db_path=deals_db))
+    monkeypatch.setattr(routes_module, "refresh_status", partial(db_module.refresh_status, db_path=deals_db))
 
     auth_db_module._conn = None
     auth_db_module.TURSO_URL = ""
@@ -146,14 +148,10 @@ def test_invite_submission_sets_session_cookie(isolated_app, monkeypatch):
     monkeypatch.setenv("PUBLIC_MODE", "0")
     monkeypatch.setenv("SECRET_KEY", "test-secret-key-at-least-32-characters")
 
-    async def _valid_code(code: str) -> bool:
+    async def _redeem_code(code: str) -> bool:
         return code == "FRESH123"
 
-    async def _record_code_use(code: str) -> None:
-        return None
-
-    monkeypatch.setattr(invite_routes, "validate_invite_code", _valid_code)
-    monkeypatch.setattr(invite_routes, "record_code_use", _record_code_use)
+    monkeypatch.setattr(invite_routes, "redeem_invite_code", _redeem_code)
 
     with TestClient(app_module.create_app()) as client:
         response = client.post("/invite", data={"code": "fresh123"}, follow_redirects=False)
@@ -527,10 +525,12 @@ def test_cdn_cache_headers_on_public_html_htmx_and_excluded_routes(isolated_app,
 
         admin_redirect = client.get("/admin/codes", follow_redirects=False)
         assert "CDN-Cache-Control" not in admin_redirect.headers
-        admin_ok = client.get("/admin/codes", params={"admin_key": "test-admin-secret"})
+        admin_login = client.post("/admin/login", data={"admin_key": "test-admin-secret"}, follow_redirects=False)
+        assert admin_login.status_code == 303
+        admin_ok = client.get("/admin/codes")
         assert admin_ok.status_code == 200
         assert "CDN-Cache-Control" not in admin_ok.headers
-        admin_home = client.get("/", params={"admin_key": "test-admin-secret"})
+        admin_home = client.get("/")
         assert "CDN-Cache-Control" not in admin_home.headers
 
     monkeypatch.setenv("PUBLIC_MODE", "0")

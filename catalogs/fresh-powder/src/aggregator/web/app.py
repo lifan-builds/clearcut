@@ -51,8 +51,7 @@ async def lifespan(app: FastAPI):
         admin_key = secrets.token_urlsafe(16)
         os.environ["ADMIN_KEY"] = admin_key
         log.warning(
-            "No ADMIN_KEY set — generated one for this session:\n"
-            "  http://localhost:8000/?admin_key=%s",
+            "No ADMIN_KEY set — generated one for this session (sign in via POST /admin/login): %s",
             admin_key,
         )
     yield

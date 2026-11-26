@@ -1,7 +1,7 @@
 """Auth database — invite codes, sessions, events.
 
-Uses Turso (cloud SQLite via libsql embedded replica) when TURSO_URL is
-set, otherwise falls back to a local SQLite file (auth.db) for development.
+Uses Turso when TURSO_URL or TURSO_DATABASE_URL is set. Local development
+uses a SQLite file (auth.db).
 
 The libsql package provides a sqlite3-compatible sync API with a local
 replica that syncs to Turso cloud. Reads are instant (local), writes
@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import secrets
 import sqlite3
 import time
 from datetime import UTC, datetime, timedelta
@@ -23,14 +22,15 @@ from aggregator.config import env_flag
 
 log = logging.getLogger(__name__)
 
-TURSO_URL = os.environ.get("TURSO_URL", "")
+TURSO_URL = os.environ.get("TURSO_URL") or os.environ.get("TURSO_DATABASE_URL", "")
 TURSO_AUTH_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "")
 
 AUTH_SCHEMA = [
     """CREATE TABLE IF NOT EXISTS invite_codes (
         code       TEXT PRIMARY KEY,
         created_at TEXT NOT NULL,
-        max_uses   INTEGER NOT NULL DEFAULT 5
+        max_uses   INTEGER NOT NULL DEFAULT 5,
+        uses       INTEGER NOT NULL DEFAULT 0
     )""",
     """CREATE TABLE IF NOT EXISTS sessions (
         token       TEXT PRIMARY KEY,
@@ -118,11 +118,24 @@ def _sync():
 # ---------------------------------------------------------------------------
 
 async def init_auth_db() -> None:
-    """Create auth tables if they don't exist."""
+    """Initialize the auth schema and migrate invite usage counts."""
     conn = _get_conn()
-    for stmt in AUTH_SCHEMA:
-        conn.execute(stmt)
-    conn.commit()
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        for stmt in AUTH_SCHEMA:
+            conn.execute(stmt)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(invite_codes)").fetchall()}
+        if "uses" not in columns:
+            conn.execute("ALTER TABLE invite_codes ADD COLUMN uses INTEGER NOT NULL DEFAULT 0")
+            conn.execute(
+                "UPDATE invite_codes SET uses = ("
+                "SELECT COUNT(*) FROM sessions WHERE sessions.invite_code = invite_codes.code"
+                ")"
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     _sync()
 
 
@@ -151,43 +164,23 @@ async def create_invite_codes(codes: list[str], max_uses: int = 5) -> int:
     return created
 
 
-async def validate_invite_code(code: str) -> bool:
-    """Check if an invite code is valid and under its max_uses limit."""
+async def redeem_invite_code(code: str) -> bool:
+    """Consume one use of an invite code with uses remaining."""
     conn = _get_conn()
-    row = conn.execute(
-        "SELECT max_uses FROM invite_codes WHERE code = ?", (code,)
-    ).fetchone()
-    if not row:
-        return False
-    max_uses = row[0]
-    use_count = conn.execute(
-        "SELECT COUNT(*) FROM sessions WHERE invite_code = ?", (code,)
-    ).fetchone()[0]
-    return use_count < max_uses
-
-
-async def record_code_use(code: str) -> None:
-    """Record that an invite code was used (insert a session row for counting)."""
-    now = datetime.now(UTC).replace(tzinfo=None).isoformat()
-    token = secrets.token_urlsafe(16)
-    conn = _get_conn()
-    conn.execute(
-        "INSERT INTO sessions (token, invite_code, created_at) VALUES (?, ?, ?)",
-        (token, code, now),
-    )
+    redeemed = conn.execute(
+        "UPDATE invite_codes SET uses = uses + 1 WHERE code = ? AND uses < max_uses",
+        (code,),
+    ).rowcount == 1
     conn.commit()
     _sync()
+    return redeemed
 
 
 async def list_invite_codes() -> list[dict]:
     """Return all invite codes with usage counts."""
     conn = _get_conn()
     rows = conn.execute(
-        "SELECT ic.code, ic.created_at, ic.max_uses, COUNT(s.token) AS use_count "
-        "FROM invite_codes ic "
-        "LEFT JOIN sessions s ON s.invite_code = ic.code "
-        "GROUP BY ic.code "
-        "ORDER BY ic.created_at"
+        "SELECT code, created_at, max_uses, uses FROM invite_codes ORDER BY created_at"
     ).fetchall()
     return [
         {"code": r[0], "created_at": r[1], "max_uses": r[2], "use_count": r[3]}
@@ -335,18 +328,13 @@ async def add_to_waitlist(email: str) -> bool:
     """Add an email to the waitlist. Returns True if added, False if already present."""
     now = datetime.now(UTC).replace(tzinfo=None).isoformat()
     conn = _get_conn()
-    try:
-        conn.execute(
-            "INSERT INTO waitlist (email, created_at) VALUES (?, ?)",
-            (email.strip().lower(), now),
-        )
-        conn.commit()
-        _sync()
-        return True
-    except (sqlite3.IntegrityError, ValueError) as e:
-        if isinstance(e, sqlite3.IntegrityError) or "UNIQUE" in str(e):
-            return False
-        raise
+    added = conn.execute(
+        "INSERT OR IGNORE INTO waitlist (email, created_at) VALUES (?, ?)",
+        (email.strip().lower(), now),
+    ).rowcount == 1
+    conn.commit()
+    _sync()
+    return added
 
 
 async def list_waitlist() -> list[dict]:

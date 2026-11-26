@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 from datetime import UTC
 
 import jwt
@@ -80,13 +81,10 @@ async def require_invite(request: Request) -> str | None:
 
     Returns "admin" for admin users, the invite code for JWT sessions, or None.
     """
-    # Admin bypass via env var
     admin_key = get_admin_key()
-    if admin_key:
-        if request.cookies.get("admin_key") == admin_key:
-            return "admin"
-        if request.query_params.get("admin_key") == admin_key:
-            return "admin"
+    cookie_key = request.cookies.get("admin_key") or ""
+    if admin_key and secrets.compare_digest(cookie_key, admin_key):
+        return "admin"
 
     # JWT session cookie
     token = request.cookies.get(SESSION_COOKIE)
@@ -97,27 +95,17 @@ async def require_invite(request: Request) -> str | None:
     return None
 
 
-def _maybe_set_admin_cookie(request: Request, response: Response) -> None:
-    """Set admin_key cookie if authenticated via query param but cookie not yet set."""
-    admin_key = get_admin_key()
-    if admin_key and not request.cookies.get("admin_key"):
-        admin_key = request.query_params.get("admin_key")
-        if admin_key == get_admin_key():
-            response.set_cookie("admin_key", admin_key, httponly=True, max_age=86400 * 365)
+def set_session_cookie(request: Request, response: Response, name: str, value: str) -> None:
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
+    response.set_cookie(
+        name, value, max_age=86400 * 365, httponly=True,
+        secure=request.url.scheme == "https" or forwarded_proto == "https",
+        samesite="lax",
+    )
 
 
 async def auth_middleware(request: Request, call_next):
     """Middleware that enforces invite-only access unless public mode is enabled."""
-    if is_public_mode() or _is_public(request.url.path):
-        response = await call_next(request)
-        _maybe_set_admin_cookie(request, response)
-        return response
-
-    session = await require_invite(request)
-    if session:
-        response = await call_next(request)
-        if session == "admin":
-            _maybe_set_admin_cookie(request, response)
-        return response
-
+    if is_public_mode() or _is_public(request.url.path) or await require_invite(request):
+        return await call_next(request)
     return RedirectResponse(url=auth_redirect_path(), status_code=302)

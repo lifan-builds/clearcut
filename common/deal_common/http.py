@@ -101,7 +101,8 @@ async def fetch_products(store: RetailerConfig, parser: BaseParser, client: http
             continue
         if store.parser_type == "shopify" and store.verify_shopify_currency:
             try:
-                storefront = await fetch_listing(client, url, delay)
+                async with semaphore:
+                    storefront = await fetch_listing(client, url, delay)
                 match = re.search(r"Shopify\.currency\s*=\s*(\{[^;]+?\})\s*;", storefront.text)
                 observed = json.loads(match.group(1)).get("active") if match else None
                 collection["observed_currency"] = observed
@@ -113,6 +114,8 @@ async def fetch_products(store: RetailerConfig, parser: BaseParser, client: http
                 collection["status"] = "currency_check_failed"
                 if isinstance(exc, httpx.HTTPStatusError):
                     collection["http_status"] = exc.response.status_code
+                    if exc.response.status_code == 429:
+                        domain_rate_limited = True
                 outcome["errors"] += 1
                 continue
 

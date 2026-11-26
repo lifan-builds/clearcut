@@ -87,10 +87,15 @@ def test_page_cap_and_failed_collection_do_not_discard_other_results():
     assert len(requests) == 5
 
 
-def test_persistent_429_aborts_remaining_collections_on_same_store():
+@pytest.mark.parametrize(("verify_currency", "first_status"), [
+    (False, "http_error"), (True, "currency_check_failed"),
+])
+def test_persistent_429_aborts_remaining_collections_on_same_store(verify_currency, first_status):
     requests = []
+    semaphore = asyncio.Semaphore(1)
 
     def handle(request):
+        assert semaphore.locked()
         requests.append(request.url.path)
         return httpx.Response(429, headers={"Retry-After": "0"})
 
@@ -105,26 +110,17 @@ def test_persistent_429_aborts_remaining_collections_on_same_store():
                 "https://example.com/collections/boots",
             ],
             shopify_products_limit=1,
+            verify_shopify_currency=verify_currency,
         )
         async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
             products = await fetch_products(
-                store, ShopifyParser(), client, semaphore=asyncio.Semaphore(1), delay=0, outcome=outcome
+                store, ShopifyParser(), client, semaphore=semaphore, delay=0, outcome=outcome
             )
         return products, outcome
 
-    async def fast_sleep(_):
-        pass
-
-    import deal_common.http as http_mod
-
-    orig_sleep = http_mod.asyncio.sleep
-    http_mod.asyncio.sleep = fast_sleep
-    try:
-        products, outcome = asyncio.run(run())
-    finally:
-        http_mod.asyncio.sleep = orig_sleep
+    products, outcome = asyncio.run(run())
 
     assert products == []
     assert len(requests) == 4
-    assert [c["status"] for c in outcome["collections"]] == ["http_error", "rate_limited", "rate_limited"]
+    assert [c["status"] for c in outcome["collections"]] == [first_status, "rate_limited", "rate_limited"]
     assert outcome["errors"] == 3

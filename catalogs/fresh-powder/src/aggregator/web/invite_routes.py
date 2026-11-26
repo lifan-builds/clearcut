@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import secrets
 import sqlite3
 
 import aiosqlite
@@ -10,8 +11,14 @@ from deal_common.rate_limit import SlidingWindowRateLimiter, client_key
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
-from aggregator.auth import SESSION_COOKIE, create_session_token, is_public_mode
-from aggregator.auth_db import add_to_waitlist, record_code_use, validate_invite_code
+from aggregator.auth import (
+    SESSION_COOKIE,
+    create_session_token,
+    get_admin_key,
+    is_public_mode,
+    set_session_cookie,
+)
+from aggregator.auth_db import add_to_waitlist, redeem_invite_code
 from aggregator.config import STORES
 from aggregator.db import query_deals
 from aggregator.web.seo import templates
@@ -65,16 +72,24 @@ async def invite_submit(request: Request, code: str = Form(...)):
             request=request, name="invite.html", context=ctx, status_code=429,
         )
     code = code.strip().upper()
-    valid = await validate_invite_code(code)
-    if not valid:
+    if not await redeem_invite_code(code):
         ctx = await _landing_context(error="Invalid or exhausted invite code.")
         return templates.TemplateResponse(
             request=request, name="invite.html", context=ctx,
         )
-    await record_code_use(code)
     token = create_session_token(code)
     response = RedirectResponse(url="/", status_code=302)
-    response.set_cookie(SESSION_COOKIE, token, httponly=True, max_age=86400 * 365)
+    set_session_cookie(request, response, SESSION_COOKIE, token)
+    return response
+
+
+@invite_router.post("/admin/login")
+async def admin_login(request: Request, admin_key: str = Form(...)):
+    configured_key = get_admin_key()
+    if not configured_key or not secrets.compare_digest(admin_key.encode(), configured_key.encode()):
+        return HTMLResponse("Invalid admin key.", status_code=403)
+    response = RedirectResponse(url="/admin/codes", status_code=303)
+    set_session_cookie(request, response, "admin_key", configured_key)
     return response
 
 
