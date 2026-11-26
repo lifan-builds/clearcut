@@ -1,6 +1,7 @@
 """Server-rendered catalog app with read-only snapshots and validated filters."""
 import os
 import re
+import time
 from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -43,9 +44,56 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
         lambda value: datetime.fromisoformat(value).strftime("%b %d, %H:%M UTC") if value else "Not yet refreshed"
     )
 
+    configured = {source.name for source in catalog.sources}
+    _sources_cache: dict[str, object] = {"stamp": None, "rows": []}
+    _model_stores_cache: dict[str, object] = {"key": None, "value": {}}
+
+    def _db_stamp() -> tuple[int, int] | None:
+        try:
+            st = database.stat()
+            return (st.st_mtime_ns, st.st_size)
+        except OSError:
+            return None
+
     def sources():
-        configured = {source.name for source in catalog.sources}
-        return [row for row in read_sources(database, catalog.slug) if row["name"] in configured]
+        stamp = _db_stamp()
+        if stamp is None:
+            _sources_cache["stamp"] = None
+            _sources_cache["rows"] = []
+            return []
+        if _sources_cache["stamp"] != stamp:
+            _sources_cache["rows"] = [row for row in read_sources(database, catalog.slug) if row["name"] in configured]
+            _sources_cache["stamp"] = stamp
+        return _sources_cache["rows"]
+
+    def _sig_for(brand_val: str, name_val: str, cat_val: str) -> tuple[str, str, str] | None:
+        if not brand_val or brand_val == "Unspecified":
+            return None
+        lower = name_val.casefold()
+        if lower.startswith(brand_val.casefold() + " "):
+            lower = lower[len(brand_val) + 1:]
+        lower = re.sub(r"\b20\d{2}\b", " ", lower)
+        toks = [t for t in re.findall(r"[a-z0-9.]+", lower) if t not in {"bike", "bikes", "road", "gravel", "mountain", "carbon", "kit", "bare", "tool", "wetsuit", "tent", "pack"}]
+        return (brand_val.casefold(), " ".join(toks[:3]), cat_val) if len(toks) >= 2 else None
+
+    def _model_stores(all_sources: list[dict], now_utc: datetime) -> dict[tuple[str, str, str], set[str]]:
+        stamp = _db_stamp()
+        cache_key = (stamp, int(time.time() // 300))
+        if stamp is not None and _model_stores_cache["key"] == cache_key:
+            return _model_stores_cache["value"]
+        computed: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+        for src in all_sources:
+            if not is_fresh(src["successful_at"], now_utc):
+                continue
+            for prod in src["products"]:
+                b_name = manufacturer_name(prod["brand"], brand_aliases=catalog.brand_aliases) if catalog.brand_aliases else prod["brand"]
+                s_key = _sig_for(b_name, prod["name"], prod["category"])
+                if s_key:
+                    computed[s_key].add(src["name"])
+        if stamp is not None:
+            _model_stores_cache["key"] = cache_key
+            _model_stores_cache["value"] = computed
+        return computed
 
     @app.middleware("http")
     async def headers(request, call_next):
@@ -83,31 +131,12 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
             filters["size"] = next((label for label in result["facets"]["size"]
                                     if size_key(label) == requested_size_key), size)
         now_utc = datetime.now(UTC)
-
-        def sig_for(brand_val: str, name_val: str, cat_val: str) -> tuple[str, str, str] | None:
-            if not brand_val or brand_val == "Unspecified":
-                return None
-            lower = name_val.casefold()
-            if lower.startswith(brand_val.casefold() + " "):
-                lower = lower[len(brand_val) + 1:]
-            lower = re.sub(r"\b20\d{2}\b", " ", lower)
-            toks = [t for t in re.findall(r"[a-z0-9.]+", lower) if t not in {"bike", "bikes", "road", "gravel", "mountain", "carbon", "kit", "bare", "tool", "wetsuit", "tent", "pack"}]
-            return (brand_val.casefold(), " ".join(toks[:3]), cat_val) if len(toks) >= 2 else None
-
-        model_stores: dict[tuple[str, str, str], set[str]] = defaultdict(set)
-        for src in all_sources:
-            if not is_fresh(src["successful_at"], now_utc):
-                continue
-            for prod in src["products"]:
-                b_name = manufacturer_name(prod["brand"], brand_aliases=catalog.brand_aliases) if catalog.brand_aliases else prod["brand"]
-                s_key = sig_for(b_name, prod["name"], prod["category"])
-                if s_key:
-                    model_stores[s_key].add(src["name"])
+        model_stores = _model_stores(all_sources, now_utc)
 
         for card in result["cards"]:
             card["history_url"] = "/history?" + urlencode({"source": card["store"], "product": card["url"],
                                                            "variant": card["offer"]["variant_key"]})
-            s_key = sig_for(card["brand"], card["name"], card["category"])
+            s_key = _sig_for(card["brand"], card["name"], card["category"])
             other_cnt = max(0, len(model_stores[s_key] - {card["store"]})) if s_key else 0
             card["other_shops"] = other_cnt
             card["compare_url"] = ("/?" + urlencode({"q": f"{card['brand']} {s_key[1]}"}) + "#deals") if other_cnt and s_key else ""
@@ -185,7 +214,10 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
     @app.get("/robots.txt", response_class=PlainTextResponse)
     def robots():
         if base_url:
-            return f"User-agent: *\nAllow: /\nDisallow: /healthz\nSitemap: {base_url}/sitemap.xml\n"
+            return (
+                "User-agent: *\nAllow: /\nDisallow: /*?\nDisallow: /history\nDisallow: /healthz\n"
+                f"Sitemap: {base_url}/sitemap.xml\n"
+            )
         return "User-agent: *\nDisallow: /\n"
 
     @app.get("/sitemap.xml")

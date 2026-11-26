@@ -196,11 +196,11 @@ async def index(
             request=request, name="invite.html", context=ctx,
         )
 
-    deals, has_more, deal_count = await _fetch_deals(
+    deals, has_more, _ = await _fetch_deals(
         category=category, store=store, brand=brand, min_discount=min_discount,
         min_price=min_price, max_price=max_price, min_reference=min_reference, size=size, year_from=year_from,
         sort=sort, tax_free=tax_free, q=q, size_min=size_min, size_max=size_max,
-        reviewed=reviewed, currency=currency, include_clothing=include_clothing, offset=offset,
+        reviewed=reviewed, currency=currency, include_clothing=include_clothing, offset=offset, count=False,
     )
     brands = await get_brands()
     length_count = await count_with_length()
@@ -213,6 +213,8 @@ async def index(
         q=q, size_min=size_min, size_max=size_max, reviewed_only=reviewed == "1",
         currency=currency, include_clothing=include_clothing,
     )
+    store_counts = store_context["store_counts"]
+    deal_count = store_counts.get(store, 0) if store else sum(store_counts.values())
 
     return templates.TemplateResponse(
         request=request, name="index.html",
@@ -256,6 +258,7 @@ async def robots_txt():
         return PlainTextResponse(
             "User-agent: *\n"
             "Allow: /\n"
+            "Disallow: /*?\n"
             "Disallow: /admin\n"
             "Disallow: /invite\n"
             "Disallow: /api/\n"
@@ -319,11 +322,11 @@ async def deals_fragment(
 ):
     """htmx partial — returns deal cards for dynamic filtering."""
     is_load_more = offset > 0
-    deals, has_more, deal_count = await _fetch_deals(
+    deals, has_more, _ = await _fetch_deals(
         category=category, store=store, brand=brand, min_discount=min_discount,
         min_price=min_price, max_price=max_price, min_reference=min_reference, size=size, year_from=year_from,
         sort=sort, tax_free=tax_free, q=q, size_min=size_min, size_max=size_max,
-        reviewed=reviewed, currency=currency, include_clothing=include_clothing, offset=offset, count=not is_load_more,
+        reviewed=reviewed, currency=currency, include_clothing=include_clothing, offset=offset, count=False,
     )
 
     template = "partials/more_cards.html" if is_load_more else "partials/deal_cards.html"
@@ -335,6 +338,11 @@ async def deals_fragment(
         q=q, size_min=size_min, size_max=size_max, reviewed_only=reviewed == "1",
         currency=currency, include_clothing=include_clothing,
     )
+    if is_load_more:
+        deal_count = None
+    else:
+        store_counts = store_context["store_counts"]
+        deal_count = store_counts.get(store, 0) if store else sum(store_counts.values())
     return templates.TemplateResponse(
         request=request, name=template,
         context={

@@ -77,6 +77,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
         run: |
+          python -c "import sqlite3; c=sqlite3.connect('catalogs/fresh-powder/data/deals.db'); c.execute('VACUUM'); c.close()"
           gh release upload latest-data catalogs/fresh-powder/data/deals.db --clobber --repo lifan-builds/clearcut-data
           gh release edit latest-data --repo lifan-builds/clearcut-data --notes "Validated snapshot from run $GITHUB_RUN_ID"
       - name: Deploy fresh data to Vercel

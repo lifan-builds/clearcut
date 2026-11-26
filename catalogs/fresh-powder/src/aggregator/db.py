@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import os
 import sqlite3
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
@@ -19,6 +20,18 @@ from aggregator.offers import selection_sql, write_offers
 from aggregator.sizes import matches_length
 
 DB_PATH = Path(os.environ.get("DATABASE_PATH", Path(__file__).resolve().parents[2] / "data" / "deals.db"))
+_READONLY_CACHE: dict[tuple, object] = {}
+_READONLY_CACHE_TTL_SECONDS = 300
+
+
+def _readonly_cache_key(name: str, db_path: Path) -> tuple | None:
+    if not _deal_db_read_only():
+        return None
+    try:
+        st = Path(db_path).stat()
+    except OSError:
+        return None
+    return (name, str(db_path), st.st_mtime_ns, st.st_size, int(time.time() // _READONLY_CACHE_TTL_SECONDS))
 
 SCHEMA = """\
 CREATE TABLE IF NOT EXISTS deals (
@@ -320,6 +333,9 @@ async def upsert_deal_reviews(
 
 async def count_with_length(db_path: Path = DB_PATH) -> int:
     """Return count of deals that have length data."""
+    cache_key = _readonly_cache_key("count_with_length", db_path)
+    if cache_key is not None and cache_key in _READONLY_CACHE:
+        return _READONLY_CACHE[cache_key]
     async with _connect(db_path, read_only=_deal_db_read_only()) as db:
         cursor = await db.execute(
             """SELECT COUNT(*) FROM deals d
@@ -329,11 +345,17 @@ async def count_with_length(db_path: Path = DB_PATH) -> int:
                AND datetime(scraped_at) >= datetime('now', '-36 hours')"""
         )
         row = await cursor.fetchone()
-    return row[0]
+    result = row[0]
+    if cache_key is not None:
+        _READONLY_CACHE[cache_key] = result
+    return result
 
 
 async def get_brands(db_path: Path = DB_PATH) -> list[str]:
     """Return distinct brand names from the brand column, sorted."""
+    cache_key = _readonly_cache_key("get_brands", db_path)
+    if cache_key is not None and cache_key in _READONLY_CACHE:
+        return list(_READONLY_CACHE[cache_key])
     async with _connect(db_path, read_only=_deal_db_read_only()) as db:
         cursor = await db.execute(
             """
@@ -347,11 +369,17 @@ async def get_brands(db_path: Path = DB_PATH) -> list[str]:
             """
         )
         rows = await cursor.fetchall()
-    return [row[0] for row in rows if row[0]]
+    result = [row[0] for row in rows if row[0]]
+    if cache_key is not None:
+        _READONLY_CACHE[cache_key] = tuple(result)
+    return result
 
 
 async def get_category_counts(db_path: Path = DB_PATH) -> dict[str, int]:
     """Return {category: deal_count} for all non-null categories."""
+    cache_key = _readonly_cache_key("get_category_counts", db_path)
+    if cache_key is not None and cache_key in _READONLY_CACHE:
+        return dict(_READONLY_CACHE[cache_key])
     async with _connect(db_path, read_only=_deal_db_read_only()) as db:
         cursor = await db.execute(
             """
@@ -365,7 +393,10 @@ async def get_category_counts(db_path: Path = DB_PATH) -> dict[str, int]:
             """
         )
         rows = await cursor.fetchall()
-    return {row[0]: row[1] for row in rows}
+    result = {row[0]: row[1] for row in rows}
+    if cache_key is not None:
+        _READONLY_CACHE[cache_key] = dict(result)
+    return result
 
 
 def _prior(expression: str, tail: str = "", *, window: bool = False) -> str:
@@ -517,8 +548,8 @@ async def query_deals(
         await db.create_function("model_year", 1, model_year, deterministic=True)
         await db.create_function("price_signal", 6, price_signal, deterministic=True)
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            selection + f"""\
+        if sort_by == "dropped":
+            sql = selection + f"""\
             SELECT deals.*, price_signal(deals.current_price, deals.previous_price, deals.previous_at,
                                          deals.prior_low, deals.tracked_since, deals.scraped_at) AS price_signal
             FROM (
@@ -535,9 +566,33 @@ async def query_deals(
             ) deals
             ORDER BY {order}
             LIMIT ? OFFSET ?
-            """,
-            (*params, limit, offset),
-        )
+            """
+        else:
+            # Order and paginate before evaluating historical observation subqueries so
+            # _prior() and price_signal() run on the page slice rather than the full catalog.
+            sql = selection + f"""\
+            SELECT deals.*, price_signal(deals.current_price, deals.previous_price, deals.previous_at,
+                                         deals.prior_low, deals.tracked_since, deals.scraped_at) AS price_signal
+            FROM (
+                SELECT deals.*,
+                       {_prior("obs.price", "ORDER BY obs.observed_at DESC LIMIT 1")} AS previous_price,
+                       {_prior("obs.observed_at", "ORDER BY obs.observed_at DESC LIMIT 1")} AS previous_at,
+                       {_prior("MIN(obs.price)", window=True)} AS prior_low,
+                       {_prior("MIN(obs.observed_at)")} AS tracked_since
+                FROM (
+                    SELECT deals.*, dr.score AS review_score, dr.award AS review_award,
+                           dr.review_url AS review_url
+                    FROM effective deals
+                    {latest_join}
+                    LEFT JOIN deal_reviews dr ON deals.id = dr.deal_id
+                    WHERE {where}
+                    ORDER BY {order}
+                    LIMIT ? OFFSET ?
+                ) deals
+            ) deals
+            ORDER BY {order}
+            """
+        cursor = await db.execute(sql, (*params, limit, offset))
         rows = await cursor.fetchall()
 
     return [

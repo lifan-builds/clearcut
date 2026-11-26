@@ -54,6 +54,10 @@ def discount(price: float, reference: float | None) -> float:
     """Calculate from decimal price inputs; only presentation may round."""
     if reference is None or not all(math.isfinite(x) for x in (price, reference)) or not 0 < price < reference:
         return 0.0
+    p100 = round(price * 100)
+    r100 = round(reference * 100)
+    if p100 / 100.0 == price and r100 / 100.0 == reference:
+        return 100.0 * (r100 - p100) / r100
     sale, base = Decimal(str(price)), Decimal(str(reference))
     return float(100 * (base - sale) / base)
 
