@@ -188,8 +188,11 @@ class ShopifyParser(BaseParser):
                 if not isinstance(candidate, dict) or is_contender_generated_variant(candidate, product_url):
                     continue
                 for field in ("price", "compare_at_price"):
+                    raw_val = candidate.get(field)
+                    if isinstance(raw_val, bool):
+                        continue
                     try:
-                        amount = float(candidate.get(field) or 0)
+                        amount = float(raw_val or 0)
                     except (TypeError, ValueError):
                         continue
                     if math.isfinite(amount) and 0 < amount < MAX_REFERENCE_PRICE and amount > max_item_price:
@@ -200,9 +203,12 @@ class ShopifyParser(BaseParser):
                 if (not isinstance(candidate, dict) or candidate.get("available") is False
                         or is_contender_generated_variant(candidate, product_url)):
                     continue
+                raw_price, raw_orig = candidate.get("price"), candidate.get("compare_at_price")
+                if isinstance(raw_price, bool) or isinstance(raw_orig, bool):
+                    continue
                 try:
-                    price = float(candidate.get("price") or 0)
-                    original = float(candidate.get("compare_at_price") or 0)
+                    price = float(raw_price or 0)
+                    original = float(raw_orig or 0)
                 except (TypeError, ValueError):
                     continue
                 if not plausible_offer(price, original) or is_price_collapse_addon(original, max_item_price):

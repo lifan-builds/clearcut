@@ -33,7 +33,9 @@ _ADDON_OPTION_RE = re.compile(
     r"protection plans?|navidium|route protection|"
     r"(?:reservation|pre[- ]?order|refundable|layaway|build) deposits?|deposit only|"
     r"(?:(?:bike|ski|binding|professional|custom|white[- ]glove) )?(?:assembly|mounting|tuning|waxing) (?:services?|fees?|charges?|only)|"
-    r"touch[- ]?up paints?|(?:color|paint|fabric|finish) swatch(?:es)?|sample only"
+    r"touch[- ]?up paints?|(?:color|paint|fabric|finish) swatch(?:es)?|sample only|"
+    r"(?:replacement|spare) (?:derailleur )?(?:hangers?|parts?|lenses?|straps?|buckles?|pads?|liners?|covers?|caps?|bolts?|blades?|bits?|belts?|brushes?|filters?|bags?|cases?)|"
+    r"(?:(?:binding )?brakes?|(?:derailleur )?hangers?|(?:carry|storage|travel|gig) (?:bags?|cases?)|blades?|poles?|skins?|leashes?|locks?|fenders?|kickstands?|pedals?|cages?) only"
     r")\b",
     re.IGNORECASE,
 )

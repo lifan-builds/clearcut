@@ -55,21 +55,31 @@ class SacredRideParser(BaseParser):
         if not name:
             return None
 
-        # Prices — WooCommerce uses <del> for original and <ins> for sale price
+        # Prices — WooCommerce uses <del> for original and <ins> for sale price.
+        # Strip nested bundle/upsell/related child blocks before reading the card price.
+        price_scope = BeautifulSoup(str(card), "lxml")
+        for nested in price_scope.select(
+            "script, style, template, .bundled_product_summary, .bundled_products, "
+            ".upsells, .related, .cross-sells, [class*='upsell']"
+        ):
+            nested.decompose()
+
         current_price: float | None = None
         original_price: float | None = None
 
-        del_el = card.select_one("p.price del .woocommerce-Price-amount, del .woocommerce-Price-amount")
-        ins_el = card.select_one("p.price ins .woocommerce-Price-amount, ins .woocommerce-Price-amount")
+        del_el = price_scope.select_one("p.price del .woocommerce-Price-amount, .price del .woocommerce-Price-amount, del .woocommerce-Price-amount")
+        ins_el = price_scope.select_one("p.price ins .woocommerce-Price-amount, .price ins .woocommerce-Price-amount, ins .woocommerce-Price-amount")
 
         if del_el and ins_el:
-            original_price = _parse_price(del_el.get_text(strip=True))
-            current_price = _parse_price(ins_el.get_text(strip=True))
+            original_price = _parse_price(del_el.get_text(" ", strip=True))
+            current_price = _parse_price(ins_el.get_text(" ", strip=True))
+            if original_price is not None and current_price is not None and original_price <= current_price:
+                original_price = None
         else:
             # Not on sale — single price
-            price_el = card.select_one("p.price .woocommerce-Price-amount, .woocommerce-Price-amount")
+            price_el = price_scope.select_one("p.price .woocommerce-Price-amount, .price .woocommerce-Price-amount, .woocommerce-Price-amount")
             if price_el:
-                current_price = _parse_price(price_el.get_text(strip=True))
+                current_price = _parse_price(price_el.get_text(" ", strip=True))
 
         if current_price is None:
             return None

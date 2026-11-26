@@ -32,7 +32,23 @@ class ColoradoDiscountParser(BaseParser):
         # a single listing page.
         return None
 
+    _SOLD_OUT_CLASSES = frozenset({"sold-out", "soldout", "out-of-stock", "outofstock"})
+    _SOLD_OUT_TEXT_RE = re.compile(r"\b(?:sold\s+out|out\s+of\s+stock)\b", re.IGNORECASE)
+    _UPSELL_AND_SAVINGS_RE = re.compile(
+        r"\(\s*(?:add|with|w/|upgrade)\b[^)]*\)"
+        r"|\+\s*\$[\d,]+\.?\d*"
+        r"|\b(?:you\s+)?save\s*:?\s*\$[\d,]+\.?\d*"
+        r"|\$[\d,]+\.?\d*\s*off\b"
+        r"|\b(?:as\s+low\s+as|from)\s*\$[\d,]+\.?\d*\s*(?:/|\s*per\s*)mo(?:nth)?\b"
+        r"|\$[\d,]+\.?\d*\s*/\s*mo(?:nth)?\b",
+        re.IGNORECASE,
+    )
+    _USD_TOKEN_RE = re.compile(r"(?<![A-Za-z])(?:US)?\$[\d,]+\.?\d*")
+
     def _parse_li(self, li: Tag, page_url: str) -> Product | None:
+        classes = {c.lower() for c in (li.get("class") or [])}
+        if classes & self._SOLD_OUT_CLASSES:
+            return None
         links = li.find_all("a")
         if not links:
             return None
@@ -62,17 +78,19 @@ class ColoradoDiscountParser(BaseParser):
         else:
             url = urljoin(page_url, links[0].get("href", ""))
 
-        # Prices: extract all dollar amounts from the li's text content
-        # The text often looks like "$1,250.00$579.99"
-        li_text = li.get_text()
-        price_matches = re.findall(r"\$[\d,]+\.?\d*", li_text)
+        li_text = li.get_text(" ", strip=True)
+        if self._SOLD_OUT_TEXT_RE.search(li_text):
+            return None
+
+        cleaned_text = self._UPSELL_AND_SAVINGS_RE.sub(" ", li_text)
+        price_matches = self._USD_TOKEN_RE.findall(cleaned_text)
         if not price_matches:
             return None
 
         parsed_prices = []
         for pm in price_matches:
             p = _parse_price(pm)
-            if p is not None:
+            if p is not None and p > 0:
                 parsed_prices.append(p)
 
         if not parsed_prices:
@@ -87,6 +105,8 @@ class ColoradoDiscountParser(BaseParser):
             # First price is original, second is sale price
             original_price = parsed_prices[0]
             current_price = parsed_prices[1]
+            if original_price <= current_price:
+                original_price = None
 
         return Product(
             name=name,

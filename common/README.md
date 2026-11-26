@@ -21,5 +21,6 @@
 | `catalog.refresh`, `catalog.audit` | Source normalization, bounded snapshot refresh, and merchant endpoint verification |
 | `catalog.query`, `catalog.health` | Freshness, best-variant selection, facets, discount-first ranking, and health hashes |
 | `catalog.web`, `catalog.cli` | Server-rendered FastAPI/Jinja storefront, shared CSS/JS, and `refresh`/`serve` CLI |
+| `equivalence` | `text-embedding-3-large` SQLite-cached product embeddings, structural precision guards, and cross-retailer canonical grouping |
 
 Install from the repository root with `pip install -e '.[dev]'` and run `.venv/bin/pytest common/tests`.

@@ -66,15 +66,34 @@ class BlueZoneParser(BaseParser):
 
         return []
 
+    _SOLD_OUT_CLASSES = frozenset({"sold-out", "soldout", "out-of-stock", "outofstock"})
+    _SOLD_OUT_BADGE_RE = re.compile(r"^\s*(?:sold\s*out|out\s*of\s*stock|unavailable)\s*$", re.IGNORECASE)
+
+    def _is_sold_out(self, card: Tag) -> bool:
+        classes = {c.lower() for c in (card.get("class") or [])}
+        if classes & self._SOLD_OUT_CLASSES:
+            return True
+        for badge in card.select("[class*='badge'], [class*='stock'], [class*='sold'], [class*='status']"):
+            if self._SOLD_OUT_BADGE_RE.match(badge.get_text(" ", strip=True)):
+                return True
+        return False
+
     def _parse_card(self, card: Tag, page_url: str) -> Product | None:
-        name_el = card.select_one("h3.product-title a, h3 a, h2 a")
-        if not name_el:
+        if self._is_sold_out(card):
             return None
-        name = name_el.get_text(strip=True)
-        if not name:
+        link_el = card.select_one("h3.product-title a[href], h3 a[href], h2 a[href]")
+        if link_el:
+            name = link_el.get_text(" ", strip=True)
+        else:
+            heading = card.select_one("a[href] h3, a[href] h2")
+            if not heading:
+                return None
+            link_el = heading.find_parent("a", href=True)
+            name = heading.get_text(" ", strip=True)
+        if not link_el or not name:
             return None
 
-        url = urljoin(page_url, name_el.get("href", ""))
+        url = urljoin(page_url, link_el.get("href", ""))
 
         price_div = card.select_one(".product-price")
         if not price_div:
@@ -94,24 +113,37 @@ class BlueZoneParser(BaseParser):
         )
 
     def _extract_prices(self, price_el: Tag) -> tuple[float | None, float | None]:
+        cleaned = BeautifulSoup(str(price_el), "lxml")
+        for noise in cleaned.select(
+            "script, style, template, [class*='upsell'], [class*='bundle'], "
+            "[class*='addon'], [class*='installment'], [class*='affirm'], [class*='klarna']"
+        ):
+            noise.decompose()
+
         current_price: float | None = None
         original_price: float | None = None
 
-        accent = price_el.select_one(".text-accent")
-        if accent:
-            current_price = _parse_price(accent.get_text())
+        for accent in cleaned.select(".text-accent"):
+            parsed = _parse_price(accent.get_text(" ", strip=True))
+            if parsed is not None and parsed > 0:
+                current_price = parsed
+                break
 
-        del_el = price_el.select_one("del")
-        if del_el:
-            original_price = _parse_price(del_el.get_text())
+        for del_el in cleaned.select("del, s, strike"):
+            parsed_orig = _parse_price(del_el.get_text(" ", strip=True))
+            if parsed_orig is not None and parsed_orig > 0:
+                original_price = parsed_orig
+                break
 
         if current_price is not None:
+            if original_price is not None and original_price <= current_price:
+                original_price = None
             return current_price, original_price
 
         all_prices = []
-        for text_node in price_el.find_all(string=re.compile(r"\$[\d,]+\.?\d*")):
-            p = _parse_price(text_node)
-            if p is not None:
+        for text_node in cleaned.find_all(string=re.compile(r"\$[\d,]+\.?\d*")):
+            p = _parse_price(str(text_node))
+            if p is not None and p > 0:
                 is_struck = text_node.find_parent(["s", "strike", "del"]) is not None
                 all_prices.append((p, is_struck))
 
@@ -122,9 +154,8 @@ class BlueZoneParser(BaseParser):
         normal = [p for p, s in all_prices if not s]
 
         if struck and normal:
-            return min(normal), max(struck)
-        if len(all_prices) == 1:
-            return all_prices[0][0], None
-
-        prices = sorted(p for p, _ in all_prices)
-        return prices[0], prices[-1] if len(prices) > 1 else None
+            sale, ref = min(normal), max(struck)
+            return sale, (ref if ref > sale else None)
+        if normal:
+            return min(normal), None
+        return min(struck), None

@@ -1,0 +1,564 @@
+{
+  "model": "gpt-5.4-pro",
+  "cases": [
+    {
+      "id": "bluezone-range-no-strike",
+      "category": "strikethrough_msrp_trap",
+      "target": "bluezone",
+      "page_url": "https://www.bluezonesports.com/collections/skis",
+      "trap_summary": "The card shows a variant price range in separate plain spans, so the high end must not be treated as a struck MSRP.",
+      "input": "<div class=\"card product-card\"><h3 class=\"product-title\"><a href=\"/products/atomic-maverick-88-ti\">Atomic Maverick 88 Ti Skis</a></h3><div class=\"product-price\"><span class=\"money\">$399.99</span><span class=\"sep\"> - </span><span class=\"money\">$599.99</span></div><img src=\"https://www.bluezonesports.com/cdn/maverick88.jpg\"></div>",
+      "expected": {
+        "product_count": 1,
+        "products": [
+          {
+            "name": "Atomic Maverick 88 Ti Skis",
+            "current_price": 399.99,
+            "original_price": null,
+            "sizes": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "bluezone-text-accent-save-badge",
+      "category": "strikethrough_msrp_trap",
+      "target": "bluezone",
+      "page_url": "https://www.bluezonesports.com/collections/skis",
+      "trap_summary": "A .text-accent promo badge says Save 35% while the real sale price and struck MSRP sit elsewhere in the same price block.",
+      "input": "<div class=\"card product-card\"><h3 class=\"product-title\"><a href=\"/products/nordica-enforcer-94\">Nordica Enforcer 94 Skis</a></h3><div class=\"product-price\"><span class=\"text-accent\">Save 35%</span><del>$849.99</del><span class=\"money\">$549.99</span></div><img src=\"https://www.bluezonesports.com/cdn/enforcer94.jpg\"></div>",
+      "expected": {
+        "product_count": 1,
+        "products": [
+          {
+            "name": "Nordica Enforcer 94 Skis",
+            "current_price": 549.99,
+            "original_price": 849.99,
+            "sizes": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "coloradodiscount-msrp-save-sale-copy",
+      "category": "strikethrough_msrp_trap",
+      "target": "coloradodiscount",
+      "page_url": "https://www.coloradodiscountskis.com/2024-skis.html",
+      "trap_summary": "The list item mixes MSRP, savings copy, and the real sale price, so the parser must not treat the savings amount as the current price.",
+      "input": "<ul><li><a href=\"/Volkl-Blaze-94-Skis-2024-p/1234.htm\" title=\"Volkl Blaze 94 Skis 2024\"><img src=\"/images/blaze94.jpg\"></a><a class=\"bb-prodnme\" href=\"/Volkl-Blaze-94-Skis-2024-p/1234.htm\">Volkl Blaze 94 Skis 172, 179 cm</a><div class=\"price\">MSRP $899.00 | You Save $320.00! | Sale $579.00</div></li></ul>",
+      "expected": {
+        "product_count": 1,
+        "products": [
+          {
+            "name": "Volkl Blaze 94 Skis 172, 179 cm",
+            "current_price": 579.0,
+            "original_price": 899.0,
+            "sizes": [
+              "172cm",
+              "179cm"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "sacredride-equal-strike-mixed-page",
+      "category": "strikethrough_msrp_trap",
+      "target": "sacredride",
+      "page_url": "https://sacredride.ca/product-category/winter/skis/",
+      "trap_summary": "One WooCommerce card has equal del/ins prices while the next card is a real markdown, so only the real markdown should retain an original_price.",
+      "input": "<ul class=\"products\"><li class=\"product\"><a class=\"fusion-rollover-title-link\" href=\"/product/armada-arv-94/\"></a><h4 class=\"fusion-rollover-title\">Armada ARV 94 Skis</h4><p class=\"price\"><del><span class=\"woocommerce-Price-amount amount\">$599.99</span></del><ins><span class=\"woocommerce-Price-amount amount\">$599.99</span></ins></p></li><li class=\"product\"><a class=\"fusion-rollover-title-link\" href=\"/product/black-crows-camox/\"></a><h4 class=\"fusion-rollover-title\">Black Crows Camox Skis</h4><p class=\"price\"><del><span class=\"woocommerce-Price-amount amount\">$899.99</span></del><ins><span class=\"woocommerce-Price-amount amount\">$649.99</span></ins></p></li></ul>",
+      "expected": {
+        "product_count": 2,
+        "products": [
+          {
+            "name": "Armada ARV 94 Skis",
+            "current_price": 599.99,
+            "original_price": null,
+            "sizes": null
+          },
+          {
+            "name": "Black Crows Camox Skis",
+            "current_price": 649.99,
+            "original_price": 899.99,
+            "sizes": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "shopify-bool-price-msrp-option-column",
+      "category": "strikethrough_msrp_trap",
+      "target": "shopify",
+      "page_url": "https://powderlab.myshopify.com/collections/skis/products.json?limit=250&page=1",
+      "trap_summary": "The feed mixes a boolean price, an inverted compare-at price, and a valid sale variant whose MSRP option column must be excluded from options text.",
+      "input": "{\"products\":[{\"handle\":\"blizzard-rustler-9-skis\",\"title\":\"Blizzard Rustler 9 Skis\",\"vendor\":\"Blizzard\",\"product_type\":\"Skis\",\"options\":[{\"name\":\"Size\"},{\"name\":\"MSRP\"},{\"name\":\"Color\"}],\"variants\":[{\"id\":101,\"price\":true,\"compare_at_price\":\"49.99\",\"available\":true,\"option1\":\"174 cm\",\"option2\":\"$49.99\",\"option3\":\"Orange\"},{\"id\":102,\"price\":\"799.00\",\"compare_at_price\":\"699.00\",\"available\":true,\"option1\":\"180 cm\",\"option2\":\"$699.00\",\"option3\":\"Black\"},{\"id\":103,\"price\":\"579.00\",\"compare_at_price\":\"899.00\",\"available\":true,\"option1\":\"186 cm\",\"option2\":\"$999.00\",\"option3\":\"Blue\"}],\"images\":[{\"src\":\"https://powderlab.myshopify.com/cdn/rustler.jpg\",\"variant_ids\":[103]}]}]}",
+      "expected": {
+        "product_count": 1,
+        "products": [
+          {
+            "name": "Blizzard Rustler 9 Skis",
+            "url": "https://powderlab.myshopify.com/products/blizzard-rustler-9-skis",
+            "current_price": 579.0,
+            "original_price": 899.0,
+            "sizes": [
+              "186 cm"
+            ],
+            "offer_count": 1,
+            "offers": [
+              {
+                "variant_key": "103",
+                "url": "https://powderlab.myshopify.com/products/blizzard-rustler-9-skis?variant=103",
+                "current_price": 579.0,
+                "original_price": 899.0,
+                "size": "186 cm",
+                "options": "186 cm / Blue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "parse-price-rejects-foreign-currency-prefixes",
+      "category": "multi_currency",
+      "target": "parse_price",
+      "page_url": "https://unit.test/parse-price",
+      "trap_summary": "Foreign currency symbols and prefixes must not be silently stripped while plain USD/CAD forms still parse.",
+      "input": [
+        "\u20ac549.00",
+        "\u00a3459.99",
+        "\u00a568,000",
+        "AU$799.00",
+        "A$799.00",
+        "NZ$899.00",
+        "MX$12,500.00",
+        "HK$4,200.00",
+        "CHF 690.00",
+        "$269.99",
+        "US$269.99",
+        "C$485.99",
+        "CA$485.99",
+        "579.99"
+      ],
+      "expected": {
+        "product_count": 0,
+        "products": [],
+        "results": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          269.99,
+          269.99,
+          485.99,
+          485.99,
+          579.99
+        ]
+      }
+    },
+    {
+      "id": "bluezone-skips-euro-gbp-aud-cards",
+      "category": "multi_currency",
+      "target": "bluezone",
+      "page_url": "https://www.bluezonesports.com/collections/skis",
+      "trap_summary": "A mixed-currency grid includes Euro, GBP, and AUD sale cards beside one real USD card, and only the USD card should survive.",
+      "input": "<div class=\"card product-card\"><h3 class=\"product-title\"><a href=\"/products/salomon-qst-lux-92\">Salomon QST Lux 92</a></h3><div class=\"product-price\"><span class=\"text-accent\">\u20ac549.00</span> <del>\u20ac799.00</del></div></div><div class=\"card product-card\"><h3 class=\"product-title\"><a href=\"/products/head-kore-91-w\">Head Kore 91 W</a></h3><div class=\"product-price\"><span class=\"text-accent\">\u00a3459.99</span> <del>\u00a3699.99</del></div></div><div class=\"card product-card\"><h3 class=\"product-title\"><a href=\"/products/armada-declivity-92-ti\">Armada Declivity 92 Ti</a></h3><div class=\"product-price\"><span class=\"text-accent\">AU$699.00</span> <del>AU$999.00</del></div></div><div class=\"card product-card\"><h3 class=\"product-title\"><a href=\"/products/faction-dancer-2\">Faction Dancer 2</a></h3><div class=\"product-price\"><span class=\"text-accent\">$549.00</span> <del>$799.00</del></div></div>",
+      "expected": {
+        "product_count": 1,
+        "products": [
+          {
+            "name": "Faction Dancer 2",
+            "current_price": 549.0,
+            "original_price": 799.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "colorado-discount-rejects-au-and-euro-price-prefixes",
+      "category": "multi_currency",
+      "target": "coloradodiscount",
+      "page_url": "https://www.coloradodiscountskis.com/nordica-skis-c-144_166.html",
+      "trap_summary": "List items with AU$ and \u20ac pricing should not be misread as USD when the parser scans raw list-item text for dollar amounts.",
+      "input": "<ul><li><a title=\"Rossignol Experience 86 Basalt 176 cm\" href=\"/rossignol-experience-86-basalt-176cm.html\"><img src=\"/img/rossi.jpg\"></a><a class=\"bb-prodnme\" href=\"/rossignol-experience-86-basalt-176cm.html\">Rossignol Experience 86 Basalt 176 cm</a><span>AU$899.00 AU$549.00</span></li><li><a title=\"Elan Ripstick 88 180 cm\" href=\"/elan-ripstick-88-180cm.html\"><img src=\"/img/elan.jpg\"></a><a class=\"bb-prodnme\" href=\"/elan-ripstick-88-180cm.html\">Elan Ripstick 88 180 cm</a><span>\u20ac799.00 \u20ac499.00</span></li><li><a title=\"Nordica Enforcer 94 172, 179 cm\" href=\"/nordica-enforcer-94-172-179cm.html\"><img src=\"/img/nordica.jpg\"></a><a class=\"bb-prodnme\" href=\"/nordica-enforcer-94-172-179cm.html\">Nordica Enforcer 94 172, 179 cm</a><span>$899.00 $549.00</span></li></ul>",
+      "expected": {
+        "product_count": 1,
+        "products": [
+          {
+            "name": "Nordica Enforcer 94 172, 179 cm",
+            "current_price": 549.0,
+            "original_price": 899.0,
+            "sizes": [
+              "172cm",
+              "179cm"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "sacredride-skips-foreign-currency-woocommerce-cards",
+      "category": "multi_currency",
+      "target": "sacredride",
+      "page_url": "https://sacredride.ca/product-category/winter/skis/",
+      "trap_summary": "WooCommerce cards mix GBP and Euro prices with valid CAD and USD offers, and only CAD/USD products should parse.",
+      "input": "<ul class=\"products\"><li class=\"product\"><a class=\"fusion-rollover-title-link\" href=\"/product/atomic-maven-86-c/\"></a><h4 class=\"fusion-rollover-title\">Atomic Maven 86 C</h4><p class=\"price\"><del><span class=\"woocommerce-Price-amount amount\">\u00a3699.99</span></del><ins><span class=\"woocommerce-Price-amount amount\">\u00a3499.99</span></ins></p></li><li class=\"product\"><a class=\"fusion-rollover-title-link\" href=\"/product/salomon-stance-84-w/\"></a><h4 class=\"fusion-rollover-title\">Salomon Stance 84 W</h4><p class=\"price\"><span class=\"woocommerce-Price-amount amount\">\u20ac599.99</span></p></li><li class=\"product\"><a class=\"fusion-rollover-title-link\" href=\"/product/blizzard-black-pearl-88/\"></a><h4 class=\"fusion-rollover-title\">Blizzard Black Pearl 88</h4><p class=\"price\"><del><span class=\"woocommerce-Price-amount amount\">C$899.99</span></del><ins><span class=\"woocommerce-Price-amount amount\">C$649.99</span></ins></p></li><li class=\"product\"><a class=\"fusion-rollover-title-link\" href=\"/product/k2-mindbender-90c/\"></a><h4 class=\"fusion-rollover-title\">K2 Mindbender 90C</h4><p class=\"price\"><span class=\"woocommerce-Price-amount amount\">$519.99</span></p></li></ul>",
+      "expected": {
+        "product_count": 2,
+        "products": [
+          {
+            "name": "Blizzard Black Pearl 88",
+            "current_price": 649.99,
+            "original_price": 899.99
+          },
+          {
+            "name": "K2 Mindbender 90C",
+            "current_price": 519.99,
+            "original_price": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "shopify-ignores-symbolic-and-nonfinite-variant-prices",
+      "category": "multi_currency",
+      "target": "shopify",
+      "page_url": "https://demo-shop.myshopify.com/collections/skis/products.json?limit=250&page=1&currency=USD",
+      "trap_summary": "A Shopify product mixes a Euro-prefixed variant price and a non-finite price string beside one valid numeric variant, and only the numeric variant should produce an offer.",
+      "input": "{\"products\":[{\"handle\":\"atomic-bent-90\",\"title\":\"Atomic Bent 90\",\"vendor\":\"Atomic\",\"product_type\":\"Skis\",\"options\":[{\"name\":\"Size\"}],\"images\":[{\"src\":\"https://cdn.shopify.com/atomic-bent-90.jpg\",\"variant_ids\":[103]}],\"variants\":[{\"id\":101,\"price\":\"\u20ac499.00\",\"compare_at_price\":\"699.00\",\"available\":true,\"option1\":\"172 cm\",\"title\":\"172 cm\"},{\"id\":102,\"price\":\"NaN\",\"compare_at_price\":\"799.00\",\"available\":true,\"option1\":\"176 cm\",\"title\":\"176 cm\"},{\"id\":103,\"price\":\"499.00\",\"compare_at_price\":\"699.00\",\"available\":true,\"option1\":\"180 cm\",\"title\":\"180 cm\"}]}]}",
+      "expected": {
+        "product_count": 1,
+        "products": [
+          {
+            "name": "Atomic Bent 90",
+            "current_price": 499.0,
+            "original_price": 699.0,
+            "sizes": [
+              "180 cm"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "shopify-ski-matrix-unknown-vs-instock",
+      "category": "sold_out_matrix",
+      "target": "shopify",
+      "page_url": "https://shop.powder.example/collections/skis/products.json?limit=250&page=1",
+      "trap_summary": "A Shopify two-option ski matrix mixes an explicitly sold-out deepest-discount size, an omitted-availability size that must stay unknown, and a confirmed in-stock size.",
+      "input": "{\"products\":[{\"handle\":\"nimbus-98-skis\",\"title\":\"Nimbus 98 Skis\",\"vendor\":\"Summit Labs\",\"options\":[{\"name\":\"Size\"},{\"name\":\"Binding Color\"}],\"images\":[{\"src\":\"https://shop.powder.example/cdn/nimbus-98.jpg\",\"variant_ids\":[16410,17220,18030]}],\"variants\":[{\"id\":16410,\"option1\":\"164cm\",\"option2\":\"Black\",\"price\":\"199.00\",\"compare_at_price\":\"800.00\",\"available\":false},{\"id\":17220,\"option1\":\"172cm\",\"option2\":\"Black\",\"price\":\"320.00\",\"compare_at_price\":\"800.00\"},{\"id\":18030,\"option1\":\"180cm\",\"option2\":\"Orange\",\"price\":\"480.00\",\"compare_at_price\":\"800.00\",\"available\":true}]}]}",
+      "expected": {
+        "product_count": 1,
+        "products": [
+          {
+            "name": "Nimbus 98 Skis",
+            "url": "https://shop.powder.example/products/nimbus-98-skis",
+            "current_price": 320.0,
+            "original_price": 800.0,
+            "sizes": [
+              "172cm"
+            ],
+            "offers": [
+              {
+                "variant_key": "17220",
+                "size": "172cm",
+                "options": "172cm / Black",
+                "current_price": 320.0,
+                "original_price": 800.0,
+                "availability": "unknown"
+              },
+              {
+                "variant_key": "18030",
+                "size": "180cm",
+                "options": "180cm / Orange",
+                "current_price": 480.0,
+                "original_price": 800.0,
+                "availability": "in_stock"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "shopify-bike-matrix-only-full-price-instock",
+      "category": "sold_out_matrix",
+      "target": "shopify",
+      "page_url": "https://bikes.example/collections/frames/products.json?limit=250&page=1",
+      "trap_summary": "Every discounted bike-frame variant is explicitly unavailable while the lone available variant is full price, so the parser must emit no products at all.",
+      "input": "{\"products\":[{\"handle\":\"alpine-carbon-frame\",\"title\":\"Alpine Carbon Frame\",\"vendor\":\"Ridge Machine\",\"options\":[{\"name\":\"Frame Size\"},{\"name\":\"Color\"}],\"variants\":[{\"id\":501,\"option1\":\"52\",\"option2\":\"Gloss Black\",\"price\":\"1299.00\",\"compare_at_price\":\"1899.00\",\"available\":false},{\"id\":502,\"option1\":\"54\",\"option2\":\"Gloss Black\",\"price\":\"1299.00\",\"compare_at_price\":\"1899.00\",\"available\":false},{\"id\":503,\"option1\":\"56\",\"option2\":\"Gloss Black\",\"price\":\"1899.00\",\"compare_at_price\":\"1899.00\",\"available\":true}]}]}",
+      "expected": {
+        "product_count": 0,
+        "products": []
+      }
+    },
+    {
+      "id": "bluezone-sold-out-card-must-be-skipped",
+      "category": "sold_out_matrix",
+      "target": "bluezone",
+      "page_url": "https://www.bluezonesports.com/collections/skis",
+      "trap_summary": "A sold-out BlueZone card still looks perfectly parseable with sale pricing and image markup, so only the truly available card should survive.",
+      "input": "<div class='collection-grid'><article class='card product-card sold-out out-of-stock'><span class='badge'>Sold Out</span><h3 class='product-title'><a href='/products/ghost-88-skis'>Ghost 88 Skis</a></h3><div class='product-price'><span class='text-accent'>$199.99</span> <del>$899.99</del></div><img src='/cdn/ghost-88.jpg'></article><article class='card product-card'><h3 class='product-title'><a href='/products/atlas-102-skis'>Atlas 102 Skis</a></h3><div class='product-price'><span class='text-accent'>$499.99</span> <del>$799.99</del></div><img src='/cdn/atlas-102.jpg'></article></div>",
+      "expected": {
+        "product_count": 1,
+        "products": [
+          {
+            "name": "Atlas 102 Skis",
+            "url": "https://www.bluezonesports.com/products/atlas-102-skis",
+            "current_price": 499.99,
+            "original_price": 799.99,
+            "image_url": "https://www.bluezonesports.com/cdn/atlas-102.jpg"
+          }
+        ]
+      }
+    },
+    {
+      "id": "coloradodiscount-sold-out-li-with-length-matrix",
+      "category": "sold_out_matrix",
+      "target": "coloradodiscount",
+      "page_url": "https://www.coloradodiscountskis.com/2024-skis.html",
+      "trap_summary": "A ColoradoDiscount sold-out list item embeds the same price pattern as an available deal, so the parser must ignore the sold-out row and keep the discrete 172/180cm listing.",
+      "input": "<ul class='products'><li class='bb-product sold-out'><a href='/product/old-school-90' title='Old School 90 Skis'><img src='/images/old-school-90.jpg'></a><a class='bb-prodnme' href='/product/old-school-90'>Old School 90 Skis</a><span class='price'>$900.00 $299.00 SOLD OUT</span></li><li class='bb-product'><a href='/product/faction-dancer-2-172-180cm' title='Faction Dancer 2 172, 180cm'><img src='/images/faction-dancer-2.jpg'></a><a class='bb-prodnme' href='/product/faction-dancer-2-172-180cm'>Faction Dancer 2 172, 180cm</a><span class='price'>$1,199.00 $499.00</span></li></ul>",
+      "expected": {
+        "product_count": 1,
+        "products": [
+          {
+            "name": "Faction Dancer 2 172, 180cm",
+            "url": "https://www.coloradodiscountskis.com/product/faction-dancer-2-172-180cm",
+            "current_price": 499.0,
+            "original_price": 1199.0,
+            "image_url": "https://www.coloradodiscountskis.com/images/faction-dancer-2.jpg",
+            "sizes": [
+              "172cm",
+              "180cm"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "sacredride-variable-range-instock-vs-outofstock",
+      "category": "sold_out_matrix",
+      "target": "sacredride",
+      "page_url": "https://sacredride.ca/product-category/winter/bindings/",
+      "trap_summary": "WooCommerce mixes instock, outofstock, and out-of-stock classes while the surviving product uses sale-price ranges that should resolve to the first amount in each range.",
+      "input": "<ul class='products'><li class='product type-product outofstock'><a class='fusion-rollover-title-link' href='https://sacredride.ca/product/rome-katana-bindings/'><img src='https://cdn.sacredride.ca/rome-katana.jpg'></a><h4 class='fusion-rollover-title'><a href='https://sacredride.ca/product/rome-katana-bindings/'>Rome Katana Bindings</a></h4><p class='price'><del><span class='woocommerce-Price-amount amount'>$849.99</span></del> <ins><span class='woocommerce-Price-amount amount'>$599.99</span></ins></p></li><li class='product type-product instock'><a class='fusion-rollover-title-link' href='https://sacredride.ca/product/union-strata-bindings/'><img src='https://cdn.sacredride.ca/union-strata.jpg'></a><h4 class='fusion-rollover-title'><a href='https://sacredride.ca/product/union-strata-bindings/'>Union Strata Bindings</a></h4><p class='price'><del><span class='woocommerce-Price-amount amount'>$799.99 \u2013 $899.99</span></del> <ins><span class='woocommerce-Price-amount amount'>$549.99 \u2013 $649.99</span></ins></p></li><li class='product type-product out-of-stock'><a class='fusion-rollover-title-link' href='https://sacredride.ca/product/bent-metal-transfer-bindings/'><img src='https://cdn.sacredride.ca/bent-metal-transfer.jpg'></a><h4 class='fusion-rollover-title'><a href='https://sacredride.ca/product/bent-metal-transfer-bindings/'>Bent Metal Transfer Bindings</a></h4><p class='price'><span class='woocommerce-Price-amount amount'>$429.99</span></p></li></ul>",
+      "expected": {
+        "product_count": 1,
+        "products": [
+          {
+            "name": "Union Strata Bindings",
+            "url": "https://sacredride.ca/product/union-strata-bindings/",
+            "current_price": 549.99,
+            "original_price": 799.99,
+            "product_type": "Ski Bindings",
+            "image_url": "https://cdn.sacredride.ca/union-strata.jpg"
+          }
+        ]
+      }
+    },
+    {
+      "id": "shopify-carbon-frameset-hanger-collapse",
+      "category": "bundle_pricing",
+      "target": "shopify",
+      "page_url": "https://www.aethercycles.com/collections/framesets/products.json?limit=250&page=1",
+      "trap_summary": "A full-price $3,200 frameset exposes a cheap discounted replacement hanger sibling that must be treated as an accessory add-on, not as the bike deal.",
+      "input": "{\"products\":[{\"handle\":\"aether-carbon-frameset\",\"title\":\"Aether Carbon Frameset\",\"vendor\":\"Aether Cycles\",\"options\":[{\"name\":\"Frame Size\"},{\"name\":\"Configuration\"}],\"variants\":[{\"id\":1001,\"option1\":\"S\",\"option2\":\"Frameset\",\"price\":\"3200.00\",\"compare_at_price\":null,\"available\":true},{\"id\":1002,\"option1\":\"M\",\"option2\":\"Frameset\",\"price\":\"3200.00\",\"compare_at_price\":null,\"available\":true},{\"id\":1003,\"option1\":\"L\",\"option2\":\"Frameset\",\"price\":\"3200.00\",\"compare_at_price\":null,\"available\":true},{\"id\":1004,\"option1\":\"One Size\",\"option2\":\"Replacement Derailleur Hanger\",\"price\":\"39.99\",\"compare_at_price\":\"69.99\",\"available\":true}],\"images\":[{\"src\":\"https://cdn.aethercycles.com/products/aether-carbon.jpg\",\"variant_ids\":[1001,1002,1003]}]}]}",
+      "expected": {
+        "product_count": 0,
+        "products": []
+      }
+    },
+    {
+      "id": "shopify-ski-binding-brake-only-sibling",
+      "category": "bundle_pricing",
+      "target": "shopify",
+      "page_url": "https://www.summitshop.com/collections/skis/products.json?limit=250&page=1",
+      "trap_summary": "A real $950 ski deal sits beside a 50%-off 'Binding Brake Only' sibling whose higher discount must not hijack the product price.",
+      "input": "{\"products\":[{\"handle\":\"glacier-98-skis\",\"title\":\"Glacier 98 Skis\",\"vendor\":\"North Ridge\",\"options\":[{\"name\":\"Length\"},{\"name\":\"Package\"}],\"variants\":[{\"id\":2101,\"option1\":\"180 cm\",\"option2\":\"Flat Ski\",\"price\":\"950.00\",\"compare_at_price\":\"1200.00\",\"available\":true},{\"id\":2102,\"option1\":\"186 cm\",\"option2\":\"Flat Ski\",\"price\":\"950.00\",\"compare_at_price\":\"1200.00\",\"available\":true},{\"id\":2103,\"option1\":\"180 cm\",\"option2\":\"Binding Brake Only - 100mm\",\"price\":\"29.99\",\"compare_at_price\":\"59.99\",\"available\":true}],\"images\":[{\"src\":\"https://cdn.summitshop.com/products/glacier-98.jpg\",\"variant_ids\":[2101,2102]}]}]}",
+      "expected": {
+        "product_count": 1,
+        "products": [
+          {
+            "name": "Glacier 98 Skis",
+            "current_price": 950.0,
+            "original_price": 1200.0,
+            "sizes": [
+              "180 cm",
+              "186 cm"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "sacredride-parent-price-before-bundled-child",
+      "category": "bundle_pricing",
+      "target": "sacredride",
+      "page_url": "https://www.sacredride.ca/product-category/winter/skis/",
+      "trap_summary": "The WooCommerce parent bundle price appears before nested bundled and upsell child prices, and only the parent $849/$1,199 pricing should be parsed.",
+      "input": "<ul class=\"products\"><li class=\"product type-product\"><a class=\"fusion-rollover-title-link\" href=\"/product/atomic-maverick-95-ti-m-10-gw/\"><img src=\"/wp-content/uploads/maverick95.jpg\"/></a><h4 class=\"fusion-rollover-title\"><a href=\"/product/atomic-maverick-95-ti-m-10-gw/\">Atomic Maverick 95 TI + M 10 GW Skis</a></h4><p class=\"price\"><del><span class=\"woocommerce-Price-amount amount\">$1,199.00</span></del><ins><span class=\"woocommerce-Price-amount amount\">$849.00</span></ins></p><div class=\"bundled_product_summary\"><p class=\"price\"><del><span class=\"woocommerce-Price-amount amount\">$59.00</span></del><ins><span class=\"woocommerce-Price-amount amount\">$29.00</span></ins></p></div><div class=\"upsells\"><p class=\"price\"><span class=\"woocommerce-Price-amount amount\">$19.00</span></p></div></li></ul>",
+      "expected": {
+        "product_count": 1,
+        "products": [
+          {
+            "name": "Atomic Maverick 95 TI + M 10 GW Skis",
+            "current_price": 849.0,
+            "original_price": 1199.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "coloradodiscount-li-plus-bindings-upsell",
+      "category": "bundle_pricing",
+      "target": "coloradodiscount",
+      "page_url": "https://www.coloradodiscountskis.com/volkl-skis.html",
+      "trap_summary": "The listing text includes a separate '+$199.00' bindings upsell after the sale price, which must not replace the actual $599 sale.",
+      "input": "<ul><li><a href=\"/2024-volkl-revolt-96-skis.html\" title=\"2024 Volkl Revolt 96 Skis 173,180 cm\"><img src=\"/images/revolt96.jpg\"/></a><a class=\"bb-prodnme\" href=\"/2024-volkl-revolt-96-skis.html\">2024 Volkl Revolt 96 Skis 173,180 cm</a><span>Retail $950.00 \u00b7 Sale $599.00 (Add Tyrolia Attack 14 Bindings +$199.00)</span></li></ul>",
+      "expected": {
+        "product_count": 1,
+        "products": [
+          {
+            "name": "2024 Volkl Revolt 96 Skis 173,180 cm",
+            "current_price": 599.0,
+            "original_price": 950.0,
+            "sizes": [
+              "173cm",
+              "180cm"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "bluezone-bundle-upsell-inside-price-block",
+      "category": "bundle_pricing",
+      "target": "bluezone",
+      "page_url": "https://www.bluezonesports.com/collections/skis",
+      "trap_summary": "A nested bundle upsell price appears inside the main price block, but the parser must keep the accent sale price and struck MSRP from the card itself.",
+      "input": "<div class=\"card product-card\"><a href=\"/products/salomon-qst-98-skis\"><img src=\"/cdn/qst98.jpg\"/></a><h3 class=\"product-title\"><a href=\"/products/salomon-qst-98-skis\">Salomon QST 98 Skis</a></h3><div class=\"product-price\"><span class=\"text-accent\">$529.99</span> <del>$799.99</del><div class=\"bundle-upsell\">Add Poles for $29.99</div></div></div>",
+      "expected": {
+        "product_count": 1,
+        "products": [
+          {
+            "name": "Salomon QST 98 Skis",
+            "current_price": 529.99,
+            "original_price": 799.99
+          }
+        ]
+      }
+    },
+    {
+      "id": "beaver-jsonld-price-mismatch",
+      "category": "strikethrough_msrp_trap",
+      "target": "beaver_detail",
+      "page_url": "https://beavertools.com/products/jet-jwp-15b-15-planer",
+      "trap_summary": "Visible sale/compare prices and window.dpoData agree on 2199/2899 USD, but the Product JSON-LD offer keeps a stale teaser price of 1899.00.",
+      "parent_meta": null,
+      "input": "<!doctype html><html><head><link rel='canonical' href='https://beavertools.com/products/jet-jwp-15b-15-planer'></head><body><product-info id='MainProduct-88001' data-url='/products/jet-jwp-15b-15-planer' data-product-id='88001'><h1 class='product__title'>JET JWP-15B 15in Planer</h1><div class='product__sku'><span>SKU</span><span>JET-JWP-15B</span></div><form class='main-product-form' action='/cart/add'><input type='hidden' name='id' value='42001'><input type='hidden' name='product-id' value='88001'><input type='number' name='quantity' value='1' min='1' step='1'><button name='add'>Add to cart</button></form><script>window.dpoData = { product: {\"id\":\"88001\",\"title\":\"JET JWP-15B 15in Planer\",\"handle\":\"jet-jwp-15b-15-planer\",\"variants\":[{\"id\":\"42001\",\"sku\":\"JET-JWP-15B\",\"requires_selling_plan\":false,\"quantity_rule\":{\"min\":1,\"increment\":1},\"options\":[\"Default Title\"],\"price\":219900,\"compare_at_price\":289900,\"available\":true}] } };</script><script type='application/ld+json'>{\"@context\":\"https://schema.org\",\"@type\":\"Product\",\"name\":\"JET JWP-15B 15in Planer\",\"sku\":\"JET-JWP-15B\",\"url\":\"https://beavertools.com/products/jet-jwp-15b-15-planer\",\"offers\":{\"@type\":\"Offer\",\"url\":\"https://beavertools.com/products/jet-jwp-15b-15-planer?variant=42001\",\"priceCurrency\":\"USD\",\"price\":\"1899.00\",\"availability\":\"https://schema.org/InStock\"}}</script><div class='product__block--price'><div class='f-price__sale'><span class='f-price-item--sale'>$2,199.00</span><span class='f-price-item--regular'>$2,899.00</span></div></div><div class='vendor-stock-label'>In Stock</div></product-info></body></html>",
+      "expected": {
+        "raises": "ValueError",
+        "sold_out": null,
+        "product_count": null,
+        "products": []
+      }
+    },
+    {
+      "id": "beaver-jsonld-cad-currency-mismatch",
+      "category": "multi_currency",
+      "target": "beaver_detail",
+      "page_url": "https://beavertools.com/products/jet-jwp-15b-15-planer-cad",
+      "trap_summary": "DOM prices and window.dpoData are valid USD values, but the Product JSON-LD offer flips priceCurrency to CAD.",
+      "parent_meta": null,
+      "input": "<!doctype html><html><head><link rel='canonical' href='https://beavertools.com/products/jet-jwp-15b-15-planer-cad'></head><body><product-info id='MainProduct-88002' data-url='/products/jet-jwp-15b-15-planer-cad' data-product-id='88002'><h1 class='product__title'>JET JWP-15B 15in Planer</h1><div class='product__sku'><span>SKU</span><span>JET-JWP-15B</span></div><form class='main-product-form' action='/cart/add'><input type='hidden' name='id' value='42002'><input type='hidden' name='product-id' value='88002'><input type='number' name='quantity' value='1' min='1' step='1'><button name='add'>Add to cart</button></form><script>window.dpoData = { product: {\"id\":\"88002\",\"title\":\"JET JWP-15B 15in Planer\",\"handle\":\"jet-jwp-15b-15-planer-cad\",\"variants\":[{\"id\":\"42002\",\"sku\":\"JET-JWP-15B\",\"requires_selling_plan\":false,\"quantity_rule\":{\"min\":1,\"increment\":1},\"options\":[\"Default Title\"],\"price\":219900,\"compare_at_price\":289900,\"available\":true}] } };</script><script type='application/ld+json'>{\"@context\":\"https://schema.org\",\"@type\":\"Product\",\"name\":\"JET JWP-15B 15in Planer\",\"sku\":\"JET-JWP-15B\",\"url\":\"https://beavertools.com/products/jet-jwp-15b-15-planer-cad\",\"offers\":{\"@type\":\"Offer\",\"url\":\"https://beavertools.com/products/jet-jwp-15b-15-planer-cad?variant=42002\",\"priceCurrency\":\"CAD\",\"price\":\"2199.00\",\"availability\":\"https://schema.org/InStock\"}}</script><div class='product__block--price'><div class='f-price__sale'><span class='f-price-item--sale'>$2,199.00</span><span class='f-price-item--regular'>$2,899.00</span></div></div><div class='vendor-stock-label'>In Stock</div></product-info></body></html>",
+      "expected": {
+        "raises": "ValueError",
+        "sold_out": null,
+        "product_count": null,
+        "products": []
+      }
+    },
+    {
+      "id": "beaver-soldout-schema-overrides-instock-feed",
+      "category": "sold_out_matrix",
+      "target": "beaver_detail",
+      "page_url": "https://beavertools.com/products/jet-jwp-15b-15-planer-oos-schema",
+      "trap_summary": "Variant feed and visible badge say In Stock, but the structured Offer availability is OutOfStock and must force sold_out=true.",
+      "parent_meta": null,
+      "input": "<!doctype html><html><head><link rel='canonical' href='https://beavertools.com/products/jet-jwp-15b-15-planer-oos-schema'></head><body><product-info id='MainProduct-88003' data-url='/products/jet-jwp-15b-15-planer-oos-schema' data-product-id='88003'><h1 class='product__title'>JET JWP-15B 15in Planer</h1><div class='product__sku'><span>SKU</span><span>JET-JWP-15B</span></div><form class='main-product-form' action='/cart/add'><input type='hidden' name='id' value='42003'><input type='hidden' name='product-id' value='88003'><input type='number' name='quantity' value='1' min='1' step='1'><button name='add'>Add to cart</button></form><script>window.dpoData = { product: {\"id\":\"88003\",\"title\":\"JET JWP-15B 15in Planer\",\"handle\":\"jet-jwp-15b-15-planer-oos-schema\",\"variants\":[{\"id\":\"42003\",\"sku\":\"JET-JWP-15B\",\"requires_selling_plan\":false,\"quantity_rule\":{\"min\":1,\"increment\":1},\"options\":[\"Default Title\"],\"price\":219900,\"compare_at_price\":289900,\"available\":true}] } };</script><script type='application/ld+json'>{\"@context\":\"https://schema.org\",\"@type\":\"Product\",\"name\":\"JET JWP-15B 15in Planer\",\"sku\":\"JET-JWP-15B\",\"url\":\"https://beavertools.com/products/jet-jwp-15b-15-planer-oos-schema\",\"offers\":{\"@type\":\"Offer\",\"url\":\"https://beavertools.com/products/jet-jwp-15b-15-planer-oos-schema?variant=42003\",\"priceCurrency\":\"USD\",\"price\":\"2199.00\",\"availability\":\"https://schema.org/OutOfStock\"}}</script><div class='product__block--price'><div class='f-price__sale'><span class='f-price-item--sale'>$2,199.00</span><span class='f-price-item--regular'>$2,899.00</span></div></div><div class='vendor-stock-label'>In Stock</div></product-info></body></html>",
+      "expected": {
+        "raises": null,
+        "sold_out": true,
+        "product_count": null,
+        "products": []
+      }
+    },
+    {
+      "id": "bikecloset-jsonld-foreign-offer-currency",
+      "category": "multi_currency",
+      "target": "bikecloset_detail",
+      "page_url": "https://bikecloset.com/product/time-adh-frameset/",
+      "trap_summary": "Canonical link, variation form, and Product identity all match, but one storefront JSON-LD offer is priced in EUR.",
+      "parent_meta": {
+        "id": 4401,
+        "type": "variable",
+        "parent": 0,
+        "name": "TIME ADH Frameset",
+        "permalink": "https://bikecloset.com/product/time-adh-frameset/",
+        "sku": "TIME-ADH",
+        "short_description": "<p>Brand new frameset. Final sale.</p>"
+      },
+      "input": "<!doctype html><html><head><link rel='canonical' href='https://bikecloset.com/product/time-adh-frameset/'></head><body><form class='variations_form' data-product_id='4401' action='https://bikecloset.com/product/time-adh-frameset/'></form><script type='application/ld+json'>{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Product\",\"url\":\"https://bikecloset.com/product/time-adh-frameset/\",\"name\":\"TIME ADH Frameset\",\"sku\":\"TIME-ADH\",\"description\":\"Brand new frameset. Final sale.\",\"offers\":[{\"@type\":\"Offer\",\"price\":\"2499.00\",\"priceCurrency\":\"USD\"},{\"@type\":\"Offer\",\"price\":\"2299.00\",\"priceCurrency\":\"EUR\"}]}]}</script></body></html>",
+      "expected": {
+        "raises": "ValueError",
+        "sold_out": null,
+        "product_count": null,
+        "products": []
+      }
+    },
+    {
+      "id": "taylor-non-us-currency-or-duplicate-sku-destination",
+      "category": "multi_currency",
+      "target": "taylor_detail",
+      "page_url": "https://taytools.com/rikon-bandsaw",
+      "trap_summary": "The required US-only price container is replaced by ca_only, and the inline exact-SKU literals also collapse two SKUs onto the same selector query.",
+      "parent_meta": null,
+      "input": "<!doctype html><html><head><link rel='canonical' href='https://taytools.com/rikon-bandsaw'></head><body><h1 id='title'>Rikon Bandsaw</h1><div id='price' class='ca_only'><span class='amount'>$899.99</span></div><select data-key='a_1'><option value='v_10'>110V</option></select><script>const skusKeyValues = {\"1001\":{\"a_1\":\"v_10\",\"data\":{\"vendor_sku\":\"10-326\",\"price\":\"899.99\",\"regular_price\":\"999.99\",\"qty\":\"5\",\"available\":true,\"ib\":false,\"level_name\":\"Regular\"}},\"1002\":{\"a_1\":\"v_10\",\"data\":{\"vendor_sku\":\"10-326X\",\"price\":\"899.99\",\"regular_price\":\"999.99\",\"qty\":\"3\",\"available\":true,\"ib\":false,\"level_name\":\"Regular\"}}};const keys = [\"a_1\"];const sc = {};const images = {\"default\":{\"array\":[{\"normal\":\"https://taytools.com/images/rikon-bandsaw.jpg\"}]}};</script></body></html>",
+      "expected": {
+        "raises": "ValueError",
+        "sold_out": null,
+        "product_count": null,
+        "products": []
+      }
+    },
+    {
+      "id": "bluezone-jsonld-script-with-dollar-inside-price-div",
+      "category": "strikethrough_msrp_trap",
+      "target": "bluezone",
+      "page_url": "https://www.bluezonesports.com/collections/skis",
+      "trap_summary": "A teaser JSON-LD lowPrice and CSS dollar literal sit inside .product-price before the visible sale and strike-through prices; only the visible money/del nodes should drive extraction.",
+      "parent_meta": null,
+      "input": "<!doctype html><html><head><link rel='canonical' href='https://www.bluezonesports.com/collections/skis'></head><body><ul class='productgrid--items'><li class='productgrid--item product-item grid__item' data-product-id='9001'><a class='productitem--link full-unstyled-link' href='https://www.bluezonesports.com/products/blizzard-anomaly-88-skis'><img src='https://www.bluezonesports.com/cdn/shop/products/blizzard-anomaly-88.jpg' alt='Blizzard Anomaly 88 Skis'><h3 class='productitem--title product-title grid-product__title'>Blizzard Anomaly 88 Skis</h3></a><div class='product-price price'><script type='application/ld+json'>{\"@type\":\"Product\",\"offers\":{\"lowPrice\":\"$199.99\",\"priceCurrency\":\"USD\"}}</script><style>.ghost-low-price:before{content:'$149.99';}</style><span class='money'>$549.99</span> <del>$799.99</del></div></li></ul></body></html>",
+      "expected": {
+        "raises": null,
+        "sold_out": null,
+        "product_count": 1,
+        "products": [
+          {
+            "name": "Blizzard Anomaly 88 Skis",
+            "url": "https://www.bluezonesports.com/products/blizzard-anomaly-88-skis",
+            "current_price": 549.99,
+            "original_price": 799.99
+          }
+        ]
+      }
+    }
+  ]
+}
