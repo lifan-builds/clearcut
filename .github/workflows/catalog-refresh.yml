@@ -28,48 +28,29 @@ jobs:
         include:
           - catalog: cycling
             command: cycling-deals
-            project_secret: CYCLING_VERCEL_PROJECT_ID
             site_variable: CYCLING_SITE_URL
           - catalog: tools
             command: tool-deals
-            project_secret: TOOLS_VERCEL_PROJECT_ID
             site_variable: TOOLS_SITE_URL
           - catalog: camp
             command: camp-deals
-            project_secret: CAMP_VERCEL_PROJECT_ID
             site_variable: CAMP_SITE_URL
           - catalog: watersports
             command: water-deals
-            project_secret: WATER_VERCEL_PROJECT_ID
             site_variable: WATER_SITE_URL
     env:
       SITE_URL: ${{ vars[matrix.site_variable] }}
-      VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
     steps:
       - name: Verify deployment configuration
         id: cfg
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
         run: |
-          for key in VERCEL_ORG_ID VERCEL_TOKEN DATA_REPO_TOKEN; do
-            if [ -z "${!key}" ]; then echo "::error::Missing configuration: $key"; exit 1; fi
-          done
-          if [ -z "$SITE_URL" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
-            echo "deploy_configured=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping Vercel deploy for ${{ matrix.catalog }} (SITE_URL/VERCEL_PROJECT_ID not yet set); snapshot will still refresh."
-          else
-            echo "deploy_configured=true" >> "$GITHUB_OUTPUT"
-          fi
+          if [ -z "$DATA_REPO_TOKEN" ]; then echo "::error::Missing configuration: DATA_REPO_TOKEN"; exit 1; fi
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - run: npm install --global vercel@65.9.0
       - run: pip install -e '.[dev]'
       - name: Verify offline data contracts
         run: python scripts/check.py -q
@@ -109,11 +90,18 @@ jobs:
         run: |
           cp "$RUNNER_TEMP/catalog.db" "$RUNNER_TEMP/$CATALOG.db"
           gh release upload latest-data "$RUNNER_TEMP/$CATALOG.db" --clobber --repo lifan-builds/clearcut-data
-      - name: Deploy the validated standalone catalog bundle
-        if: steps.cfg.outputs.deploy_configured == 'true'
+
+  deploy-render:
+    needs: refresh
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger consolidated Render redeploy
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: vercel deploy "$RUNNER_TEMP/site" --yes --prod --token "$VERCEL_TOKEN"
-      - name: Verify public site serves this exact snapshot
-        if: steps.cfg.outputs.deploy_configured == 'true'
-        run: python scripts/verify_catalog_live.py --receipt "$RUNNER_TEMP/site/BUILD-RECEIPT.json" --site-url "$SITE_URL"
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::warning::RENDER_DEPLOY_HOOK_URL not configured; skipping Render redeploy."
+            exit 0
+          fi
+          curl --fail --silent --show-error --retry 2 --max-time 30 --request POST "$RENDER_DEPLOY_HOOK_URL" --output /dev/null

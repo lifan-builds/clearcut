@@ -80,15 +80,15 @@ jobs:
           python -c "import sqlite3; c=sqlite3.connect('catalogs/fresh-powder/data/deals.db'); c.execute('VACUUM'); c.close()"
           gh release upload latest-data catalogs/fresh-powder/data/deals.db --clobber --repo lifan-builds/clearcut-data
           gh release edit latest-data --repo lifan-builds/clearcut-data --notes "Validated snapshot from run $GITHUB_RUN_ID"
-      - name: Deploy fresh data to Vercel
+      - name: Trigger Render redeploy with fresh snapshot
         env:
-          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
-          if [ -z "$VERCEL_DEPLOY_HOOK_URL" ]; then
-            echo "::error::VERCEL_DEPLOY_HOOK_URL is required."
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::error::RENDER_DEPLOY_HOOK_URL is required."
             exit 1
           fi
-          curl --fail --silent --show-error --retry 2 --max-time 30 --request POST "$VERCEL_DEPLOY_HOOK_URL" --output /dev/null
+          curl --fail --silent --show-error --retry 2 --max-time 30 --request POST "$RENDER_DEPLOY_HOOK_URL" --output /dev/null
       - name: Verify production snapshot
         run: python scripts/verify_live_snapshot.py scrape-report.json
       - name: Send rare-deal alerts when configured
