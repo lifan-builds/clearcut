@@ -47,6 +47,22 @@ def _prepare_deals_db(path: Path) -> None:
     asyncio.run(repair_deal_categories(path))
     asyncio.run(compute_and_store_deal_reviews(path))
     with sqlite3.connect(path) as conn:
+        # Keep only current-scrape deals & their offers/history in the read-only web container
+        # so queries stay fast and low-memory on 512 MB Free instances.
+        conn.execute(
+            """
+            DELETE FROM deals
+            WHERE (store, scraped_at) NOT IN (
+                SELECT store, MAX(scraped_at) FROM deals GROUP BY store
+            )
+            """
+        )
+        conn.execute("DELETE FROM deal_offers WHERE product_url NOT IN (SELECT url FROM deals)")
+        conn.execute("DELETE FROM offer_observations WHERE product_url NOT IN (SELECT url FROM deals)")
+        conn.execute("DELETE FROM price_history WHERE url NOT IN (SELECT url FROM deals)")
+        conn.execute("DELETE FROM deal_reviews WHERE deal_id NOT IN (SELECT id FROM deals)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_deals_store_scraped ON deals(store, scraped_at)")
+        conn.commit()
         conn.execute("VACUUM")
     print(f"[render_prepare] deals.db compacted to {path.stat().st_size:,} bytes", flush=True)
 

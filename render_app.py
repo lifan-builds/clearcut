@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import os
 import sys
 from pathlib import Path
@@ -54,12 +55,14 @@ def _request_host(scope: dict) -> str:
 def create_multi_host_app(data_dir: Path | None = None):
     base_dir = Path(data_dir) if data_dir is not None else DATA_DIR
     snow_app = create_snow_app(enable_lifespan=False)
-    cache: dict[str, object] = {}
+    portal_app = None
+    active_catalog: tuple[str, object] | None = None
 
     def _get_portal():
-        if "clearcut" not in cache:
+        nonlocal portal_app
+        if portal_app is None:
             snow_db = Path(os.environ.get("DATABASE_PATH", base_dir / "deals.db"))
-            cache["clearcut"] = create_portal_app(
+            portal_app = create_portal_app(
                 default_portal_catalogs(
                     snow_db=snow_db if snow_db.is_file() else None,
                     cycling_db=base_dir / "cycling.db" if (base_dir / "cycling.db").is_file() else None,
@@ -69,20 +72,29 @@ def create_multi_host_app(data_dir: Path | None = None):
                 ),
                 public_url=os.environ.get("CLEARCUT_PUBLIC_URL", "https://clearcut.clifan.com"),
             )
-        return cache["clearcut"]
+        return portal_app
 
     def _get_catalog(prefix: str):
-        if prefix not in cache:
-            module_name, db_file, env_url, default_url = _CATALOG_HOSTS[prefix]
-            mod = __import__(module_name, fromlist=["CATALOG"])
-            cache[prefix] = create_catalog_app(
-                mod.CATALOG,
-                base_dir / db_file,
-                public_url=os.environ.get(env_url, default_url),
-            )
-        return cache[prefix]
+        # Keep only one standalone catalog parsed in memory at a time so the
+        # consolidated container stays comfortably under Render Free's 512 MB RAM cap;
+        # Cloudflare Edge caches all 6 storefronts for 24h via CDN-Cache-Control.
+        nonlocal active_catalog
+        if active_catalog is not None and active_catalog[0] == prefix:
+            return active_catalog[1]
+        active_catalog = None
+        gc.collect()
+        module_name, db_file, env_url, default_url = _CATALOG_HOSTS[prefix]
+        mod = __import__(module_name, fromlist=["CATALOG"])
+        built = create_catalog_app(
+            mod.CATALOG,
+            base_dir / db_file,
+            public_url=os.environ.get(env_url, default_url),
+        )
+        active_catalog = (prefix, built)
+        return built
 
     async def asgi(scope, receive, send):
+        nonlocal active_catalog
         if scope["type"] in {"http", "websocket"}:
             host = _request_host(scope)
             if host == "clearcut" or host.startswith("clearcut."):
@@ -92,6 +104,10 @@ def create_multi_host_app(data_dir: Path | None = None):
                 if host == prefix or host.startswith(f"{prefix}."):
                     await _get_catalog(prefix)(scope, receive, send)
                     return
+            # Evict standalone catalog JSON cache before serving FreshPowder SQLite queries.
+            if active_catalog is not None:
+                active_catalog = None
+                gc.collect()
         await snow_app(scope, receive, send)
 
     return asgi
