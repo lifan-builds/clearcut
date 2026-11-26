@@ -23,6 +23,7 @@ import httpx
 from deal_common.catalog.definition import manufacturer_name
 
 DEFAULT_EMBEDDINGS_URL = "http://127.0.0.1:18455/v1/embeddings"
+DEFAULT_GATEWAY_API_KEY = "quotaswitch-local"
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-large"
 DEFAULT_SIMILARITY_THRESHOLD = 0.86
 DEFAULT_MPN_SIMILARITY_THRESHOLD = 0.78
@@ -375,7 +376,11 @@ class OpenAIEmbeddingClient:
         self.cache = cache
         self.url = base_url or os.environ.get("CLEARCUT_EMBEDDINGS_URL", DEFAULT_EMBEDDINGS_URL)
         self.model = model
-        self.api_key = api_key if api_key is not None else os.environ.get("OPENAI_API_KEY")
+        self.api_key = (
+            api_key
+            if api_key is not None
+            else (os.environ.get("QUOTASWITCH_API_KEY") or os.environ.get("OPENAI_API_KEY") or DEFAULT_GATEWAY_API_KEY)
+        )
         self.quotaswitch_auth = quotaswitch_auth
         self.batch_size = max(1, batch_size)
         self.timeout = timeout
