@@ -102,7 +102,9 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; img-src 'self' https:; style-src 'self'; "
-            "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+            "script-src 'self' https://static.cloudflareinsights.com; "
+            "connect-src 'self' https://cloudflareinsights.com; "
+            "object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
         )
         if not base_url or request.url.query or request.url.path == "/healthz":
             response.headers["X-Robots-Tag"] = "noindex, nofollow"
