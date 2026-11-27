@@ -56,3 +56,31 @@ def test_render_multi_host_routes_all_six_hosts(tmp_path, monkeypatch):
     assert "FreshPowder" in client.get("/robots.txt", headers={"host": "freshpowder.clifan.com"}).text or (
         client.get("/robots.txt", headers={"host": "freshpowder.clifan.com"}).status_code == 200
     )
+
+    for fwd_host, banner in [
+        ("bigring.clifan.com", "/brand/img/cycling-banner.jpg"),
+        ("benchdrop.clifan.com", "/brand/img/tools-banner.jpg"),
+        ("highline.clifan.com", "/brand/img/camp-banner.jpg"),
+        ("tideline.clifan.com", "/brand/img/water-banner.jpg"),
+    ]:
+        resp = client.get(
+            "/",
+            headers={"host": "clearcut-cjt5.onrender.com", "x-forwarded-host": fwd_host},
+        )
+        assert resp.status_code == 200
+        assert "clearcut-cjt5.onrender.com" not in resp.text
+        assert 'href="/static/catalog.css?v=' in resp.text
+        assert 'href="/brand/brand.css?v=' in resp.text
+        assert 'src="/static/catalog.js?v=' in resp.text
+        assert f'src="{banner}"' in resp.text
+        assert client.get(banner, headers={"host": "clearcut-cjt5.onrender.com", "x-forwarded-host": fwd_host}).status_code == 200
+
+    portal = client.get(
+        "/",
+        headers={"host": "clearcut-cjt5.onrender.com", "x-forwarded-host": "clearcut.clifan.com"},
+    )
+    assert portal.status_code == 200
+    assert "clearcut-cjt5.onrender.com" not in portal.text
+    assert 'href="/portal-static/portal.css?v=' in portal.text
+    assert 'src="/portal-static/portal.js?v=' in portal.text
+    assert 'src="/portal-static/img/snow-card.jpg"' in portal.text

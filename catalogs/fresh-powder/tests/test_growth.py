@@ -60,6 +60,21 @@ def test_reject_cross_site_unsafe_urls_and_oversized_payload(public_client, monk
     assert public_client.post('/api/event', json={'event_type':'page_view'}).json()['recorded'] is False
 
 
+@pytest.mark.parametrize('error', [
+    ValueError('Hrana: status=402 Payment Required, body=DEPLOYMENT_DISABLED'),
+    sqlite3.OperationalError('no such table: events'),
+    OSError('upstream stats unavailable'),
+])
+def test_event_degrades_to_204_when_storage_unavailable(public_client, monkeypatch, error):
+    async def broken(**data):
+        raise error
+    monkeypatch.setattr(event_routes, 'log_event', broken)
+    resp = public_client.post('/api/event', json={'event_type': 'page_view'})
+    assert resp.status_code == 204
+    assert resp.headers.get('cache-control') == 'no-store'
+    assert 'set-cookie' not in resp.headers
+
+
 def test_metadata_rejects_private_paths_and_malformed_values():
     for raw in ['not-json', '[]', '{"source": [], "currency": {}, "campaign": []}', '{"page":"/alerts/remove/secret"}']:
         assert json.loads(event_routes.safe_metadata(raw)) == {'version': 2}

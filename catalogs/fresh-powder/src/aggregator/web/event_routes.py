@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import secrets
+import sqlite3
 from urllib.parse import urlsplit, urlunsplit
 
 from deal_common.rate_limit import SlidingWindowRateLimiter, client_key
 from fastapi import APIRouter, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 
 from aggregator.auth import auth_redirect_path, require_invite
 from aggregator.auth_db import get_click_stats, log_event
 from aggregator.web.seo import templates
 
+log = logging.getLogger(__name__)
 event_router = APIRouter()
 EVENT_POST_LIMIT = 120
 EVENT_POST_WINDOW_SECONDS = 60
@@ -82,11 +85,15 @@ async def track_event(request: Request, payload: EventPayload):
     token = request.cookies.get(ANALYTICS_COOKIE, "")
     if not re.fullmatch(r"[a-f0-9]{32}", token):
         token = secrets.token_hex(16)
-    await log_event(
-        event_type=payload.event_type, session="anon:" + token,
-        deal_url=url, deal_name=payload.deal_name, store=payload.store,
-        category=payload.category, metadata=safe_metadata(payload.metadata),
-    )
+    try:
+        await log_event(
+            event_type=payload.event_type, session="anon:" + token,
+            deal_url=url, deal_name=payload.deal_name, store=payload.store,
+            category=payload.category, metadata=safe_metadata(payload.metadata),
+        )
+    except (OSError, sqlite3.Error, ValueError, RuntimeError) as exc:
+        log.warning("Event tracking unavailable; ignoring %s event: %s", payload.event_type, exc)
+        return Response(status_code=204, headers={"Cache-Control": "no-store"})
     response = JSONResponse({"ok": True})
     response.headers["Cache-Control"] = "no-store"
     response.set_cookie(ANALYTICS_COOKIE, token, max_age=1800, httponly=True,

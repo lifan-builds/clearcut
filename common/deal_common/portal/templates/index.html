@@ -10,8 +10,8 @@
   <meta property="og:type" content="website">
   {% if public_url %}<link rel="canonical" href="{{ public_url }}/"><meta property="og:url" content="{{ public_url }}/">{% endif %}
   <meta name="theme-color" content="#0d1721">
-  <link rel="stylesheet" href="{{ url_for('portal_static', path='portal.css') }}?v=4">
-  <script src="{{ url_for('portal_static', path='portal.js') }}?v=4" defer></script>
+  <link rel="stylesheet" href="{{ url_for('portal_static', path='portal.css').path }}?v=5">
+  <script src="{{ url_for('portal_static', path='portal.js').path }}?v=4" defer></script>
 </head>
 <body id="top" data-active-world="{{ selected_slug }}">
   <a class="skip" href="#main">Skip to content</a>
@@ -67,7 +67,7 @@
       <div class="worlds-reel" id="worlds-reel" tabindex="0" role="region" aria-label="Five specialist gear worlds—scroll horizontally or use arrow keys">
         {% for desk in desks %}{% set cat = desk.catalog %}{% set summary = desk.summary %}
         <article class="world-monolith world--{{ cat.slug }}{% if loop.first %} is-active{% endif %}" data-world="{{ cat.slug }}" data-index="{{ loop.index }}">
-          <img class="world-plate" src="{{ url_for('portal_static', path='img/' ~ cat.image_name) }}" alt="{{ cat.name }} — {{ cat.domain_label }}" width="900" height="1350" loading="{{ 'eager' if loop.index <= 2 else 'lazy' }}">
+          <img class="world-plate" src="{{ url_for('portal_static', path='img/' ~ cat.image_name).path }}" alt="{{ cat.name }} — {{ cat.domain_label }}" width="900" height="1350" loading="{{ 'eager' if loop.index <= 2 else 'lazy' }}">
           <div class="world-scrim" aria-hidden="true"></div>
 
           <div class="world-top">
@@ -121,7 +121,7 @@
             {% if item.image_url %}
             <img src="{{ item.image_url }}" alt="" loading="lazy" width="320" height="240" referrerpolicy="no-referrer">
             {% else %}
-            <img class="standout-fallback" src="{{ url_for('portal_static', path='img/snow-card.jpg') }}" alt="" loading="lazy" width="320" height="240">
+            <img class="standout-fallback" src="{{ url_for('portal_static', path='img/snow-card.jpg').path }}" alt="" loading="lazy" width="320" height="240">
             {% endif %}
             <span class="standout-world">{{ item.world_name }}</span>
           </div>

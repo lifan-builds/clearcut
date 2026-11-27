@@ -1,10 +1,17 @@
 const ORIGIN = 'https://clearcut-cjt5.onrender.com';
+const CACHE_VERSION = 'v2';
 const CACHEABLE_HOSTS = new Set([
   'bigring.clifan.com',
   'benchdrop.clifan.com',
   'tideline.clifan.com',
   'highline.clifan.com',
 ]);
+
+function makeCacheKey(url) {
+  const keyUrl = new URL(url.toString());
+  keyUrl.searchParams.set('__cc_edge_v', CACHE_VERSION);
+  return new Request(keyUrl.toString(), { method: 'GET' });
+}
 
 export default {
   async fetch(request, _env, ctx) {
@@ -17,7 +24,7 @@ export default {
     const isCacheableMethod = request.method === 'GET' || request.method === 'HEAD';
     const isExcludedPath = url.pathname === '/healthz';
     const cache = caches.default;
-    const cacheKey = new Request(url.toString(), { method: 'GET' });
+    const cacheKey = makeCacheKey(url);
 
     if (isCacheableMethod && !isExcludedPath) {
       const cached = await cache.match(cacheKey);
@@ -44,7 +51,7 @@ export default {
     const cdnCC = respHeaders.get('cdn-cache-control') || '';
     const cc = (respHeaders.get('cache-control') || '').toLowerCase();
     const shouldCache =
-      isCacheableMethod &&
+      request.method === 'GET' &&
       !isExcludedPath &&
       upstream.status === 200 &&
       !cc.includes('no-store') &&
@@ -56,7 +63,7 @@ export default {
     }
     respHeaders.set('X-Clearcut-Edge-Cache', shouldCache ? 'MISS' : 'BYPASS');
 
-    const response = new Response(upstream.body, {
+    const response = new Response(request.method === 'HEAD' ? null : upstream.body, {
       status: upstream.status,
       statusText: upstream.statusText,
       headers: respHeaders,

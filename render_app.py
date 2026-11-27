@@ -34,7 +34,7 @@ _CATALOG_HOSTS = {
 }
 
 
-def _request_host(scope: dict) -> str:
+def _request_hosts(scope: dict) -> tuple[str, str]:
     forwarded = ""
     host = ""
     for raw_key, raw_val in scope.get("headers", ()):
@@ -43,7 +43,13 @@ def _request_host(scope: dict) -> str:
             forwarded = raw_val.decode("latin-1").split(",", 1)[0].split(":", 1)[0].strip().lower()
         elif key == b"host":
             host = raw_val.decode("latin-1").split(":", 1)[0].strip().lower()
-    return forwarded or host
+    return forwarded, host
+
+
+def _scope_with_host(scope: dict, host: str) -> dict:
+    headers = [(k, v) for k, v in scope.get("headers", ()) if k.lower() != b"host"]
+    headers.append((b"host", host.encode("latin-1")))
+    return {**scope, "headers": headers}
 
 
 def create_multi_host_app(data_dir: Path | None = None):
@@ -90,18 +96,23 @@ def create_multi_host_app(data_dir: Path | None = None):
     async def asgi(scope, receive, send):
         nonlocal active_catalog
         if scope["type"] in {"http", "websocket"}:
-            host = _request_host(scope)
+            forwarded, raw_host = _request_hosts(scope)
+            host = forwarded or raw_host
+            routed_scope = _scope_with_host(scope, forwarded) if forwarded and forwarded != raw_host else scope
             if host == "clearcut" or host.startswith("clearcut."):
-                await _get_portal()(scope, receive, send)
+                await _get_portal()(routed_scope, receive, send)
                 return
             for prefix in _CATALOG_HOSTS:
                 if host == prefix or host.startswith(f"{prefix}."):
-                    await _get_catalog(prefix)(scope, receive, send)
+                    await _get_catalog(prefix)(routed_scope, receive, send)
                     return
             # Evict standalone catalog JSON cache before serving FreshPowder SQLite queries.
             if active_catalog is not None:
                 active_catalog = None
                 gc.collect()
+            if host == "freshpowder" or host.startswith("freshpowder."):
+                await snow_app(routed_scope, receive, send)
+                return
         await snow_app(scope, receive, send)
 
     return asgi

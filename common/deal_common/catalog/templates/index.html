@@ -5,7 +5,7 @@
 {% block content %}
 <section class="world-hero-wrap">
   <div class="world-hero">
-    <img class="world-hero-img" src="{{ url_for('brand', path=banner_img) }}" alt="" width="1536" height="960" fetchpriority="high" aria-hidden="true">
+    <img class="world-hero-img" src="{{ url_for('brand', path=banner_img).path }}" alt="" width="1536" height="960" fetchpriority="high" aria-hidden="true">
     <div class="world-hero-scrim" aria-hidden="true"></div>
     <div class="world-hero-copy">
       <h1>{{ catalog.headline.replace('\n', ' ') }}</h1>
@@ -152,7 +152,7 @@
           {% if offer.image_url %}
           <img src="{{ offer.image_url }}" alt="" loading="{{ 'eager' if loop.first else 'lazy' }}" width="400" height="320" referrerpolicy="no-referrer">
           {% else %}
-          <img class="world-fallback-art" src="{{ url_for('brand', path=banner_img) }}" alt="" loading="lazy" width="400" height="320">
+          <img class="world-fallback-art" src="{{ url_for('brand', path=banner_img).path }}" alt="" loading="lazy" width="400" height="320">
           {% endif %}
           <span class="product-category">{{ product.category }}</span>
         </a>
