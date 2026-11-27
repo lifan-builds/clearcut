@@ -5,6 +5,8 @@
   "compatibility_date": "2026-11-01",
   "workers_dev": false,
   "routes": [
+    { "pattern": "clearcut.clifan.com/*", "zone_name": "clifan.com" },
+    { "pattern": "freshpowder.clifan.com/*", "zone_name": "clifan.com" },
     { "pattern": "bigring.clifan.com", "custom_domain": true },
     { "pattern": "benchdrop.clifan.com", "custom_domain": true },
     { "pattern": "tideline.clifan.com", "custom_domain": true },
