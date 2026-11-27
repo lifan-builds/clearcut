@@ -1,5 +1,5 @@
 const ORIGIN = 'https://clearcut-cjt5.onrender.com';
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const CACHEABLE_HOSTS = new Set([
   'clearcut.clifan.com',
   'freshpowder.clifan.com',

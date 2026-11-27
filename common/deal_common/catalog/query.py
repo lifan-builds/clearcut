@@ -1,10 +1,18 @@
 """Choose one eligible offer per listing before counts, order, and pagination."""
+import hashlib
 import re
+from collections import defaultdict
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from math import ceil
 
-from deal_common.catalog.definition import manufacturer_name
+from deal_common.catalog.definition import (
+    brand_id,
+    clean_brand,
+    compile_brand_aliases,
+    display_brand,
+    manufacturer_name,
+)
 from deal_common.offers import (
     discount,
     is_addon_variant,
@@ -34,15 +42,27 @@ def _norm_key(value: str | None) -> str:
     return re.sub(r"\s+", " ", (value or "").strip()).casefold()
 
 
-def _dedupe_key(card: dict, valid_size: Callable[[str | None], str | None]) -> tuple[str, str, str, str, str]:
-    offer = card["offer"]
+def default_exact_offer_key(
+    product: dict,
+    offer: dict,
+    brand_key: str,
+    valid_size_value: str | None,
+) -> tuple[str, ...]:
     return (
-        _norm_key(card.get("brand")),
-        _norm_key(card.get("name")),
-        _norm_key(card.get("category")),
-        size_key(valid_size(offer.get("size"))),
+        "default",
+        brand_key,
+        _norm_key(product.get("name")),
+        _norm_key(product.get("category")),
+        size_key(valid_size_value),
         _norm_key(offer.get("options")),
+        _norm_key(product.get("format")),
     )
+
+
+def group_token(key: tuple[str, ...] | None) -> str | None:
+    if key is None:
+        return None
+    return hashlib.sha256("\x1f".join(key).encode("utf-8")).hexdigest()[:16]
 
 
 def query(
@@ -55,14 +75,26 @@ def query(
     size_value_pattern: str = "",
     collapse_duplicates: bool = False,
     reconcile_product: Callable[[dict], dict | None] | None = None,
+    exact_offer_key: Callable[[dict, dict, str, str | None], tuple[str, ...] | None] | None = None,
 ) -> dict:
     now = now or datetime.now(UTC)
+    compiled_aliases, preferred_brands = compile_brand_aliases(brand_aliases)
+
+    def _raw_brand(value: str | None) -> str:
+        if brand_aliases:
+            return manufacturer_name(value, brand_aliases=brand_aliases)
+        return clean_brand(value)
+
     requested_brand = filters.get("brand")
-    if requested_brand and brand_aliases:
-        requested_brand = manufacturer_name(requested_brand, brand_aliases=brand_aliases)
+    requested_brand_id = (
+        brand_id(_raw_brand(requested_brand), compiled_aliases=compiled_aliases)
+        if requested_brand else ""
+    )
     opt_in = set(opt_in_categories)
     requested_category = filters.get("category") or ""
+    requested_group = (filters.get("group") or "").strip()
     size_re = re.compile(size_value_pattern, re.IGNORECASE) if size_value_pattern else None
+    key_fn = exact_offer_key or default_exact_offer_key
 
     def valid_size(raw: str | None) -> str | None:
         if not raw:
@@ -74,8 +106,12 @@ def query(
             return None
         return raw
 
-    cards = []
+    cards: list[dict] = []
+    card_brand_ids: list[str] = []
+    card_group_ids: list[str | None] = []
     facets = {key: set() for key in ("brand", "store", "size", "platform")}
+    observed_brands: dict[str, set[str]] = defaultdict(set)
+    group_stores: dict[str, set[str]] = defaultdict(set)
     fresh_sources = 0
     for source in sources:
         if not is_fresh(source["successful_at"], now):
@@ -98,9 +134,10 @@ def query(
                             if not is_price_collapse_addon(o["original_price"], max_reference)]
             if not valid_offers:
                 continue
-            brand = (manufacturer_name(product["brand"], brand_aliases=brand_aliases)
-                     if brand_aliases else product["brand"])
-            facets["brand"].add(brand)
+            raw_brand = _raw_brand(product["brand"])
+            b_id = brand_id(raw_brand, compiled_aliases=compiled_aliases)
+            observed_brands[b_id].add(raw_brand)
+            facets["brand"].add(b_id)
             facets["store"].add(source["name"])
             if product["platform"]:
                 facets["platform"].add(product["platform"])
@@ -108,7 +145,7 @@ def query(
                 sz = valid_size(offer["size"])
                 if sz and offer["availability"] == "in_stock":
                     facets["size"].add(sz)
-            if requested_brand and requested_brand != brand:
+            if requested_brand_id and requested_brand_id != b_id:
                 continue
             if any(filters.get(key) and filters[key] != product[key]
                    for key in ("category", "format", "platform")):
@@ -117,14 +154,15 @@ def query(
                 continue
             if filters.get("q"):
                 needle = filters["q"].casefold()
-                if not any(needle in (product["name"] + " " + b).casefold() for b in (product["brand"], brand)):
+                if not any(needle in (product["name"] + " " + b).casefold() for b in (product["brand"], raw_brand)):
                     continue
-            eligible = []
+            eligible: list[tuple[dict, str | None]] = []
             for offer in valid_offers:
-                if filters.get("size"):
-                    sz = valid_size(offer["size"])
-                    if offer["availability"] != "in_stock" or not sz or size_key(sz) != size_key(filters["size"]):
-                        continue
+                sz = valid_size(offer["size"])
+                if filters.get("size") and (
+                    offer["availability"] != "in_stock" or not sz or size_key(sz) != size_key(filters["size"])
+                ):
+                    continue
                 if filters.get("stock") and offer["availability"] != "in_stock":
                     continue
                 pct = discount(offer["current_price"], offer["original_price"])
@@ -132,18 +170,41 @@ def query(
                         or offer["original_price"] < filters["min_reference"]
                         or (filters["max_price"] and offer["current_price"] > filters["max_price"])):
                     continue
-                eligible.append({**offer, "discount": pct,
-                                 "savings": round(offer["original_price"] - offer["current_price"], 2)})
+                gid = group_token(key_fn(product, offer, b_id, sz))
+                if gid:
+                    group_stores[gid].add(source["name"])
+                if requested_group and gid != requested_group:
+                    continue
+                eligible.append((
+                    {**offer, "discount": pct, "savings": round(offer["original_price"] - offer["current_price"], 2)},
+                    gid,
+                ))
             if not eligible:
                 continue
-            best = min(eligible, key=lambda o: (-o["discount"], -o["savings"], o["current_price"], o["variant_key"]))
+            best, best_gid = min(
+                eligible,
+                key=lambda item: (-item[0]["discount"], -item[0]["savings"], item[0]["current_price"], item[0]["variant_key"]),
+            )
             history = best.get("history") or {}
             signal = price_signal(best["current_price"], history.get("previous_price"), history.get("previous_at"),
                                   history.get("low"), history.get("tracked_since"), source["successful_at"])
-            cards.append({**product, "brand": brand, "offer": best, "store": source["name"],
+            cards.append({**product, "brand": raw_brand, "offer": best, "store": source["name"],
                           "observed_at": source["successful_at"], "matching_variants": len(eligible),
                           "price_signal": signal,
                           "price_drop": round(history["previous_price"] - best["current_price"], 2) if signal else 0})
+            card_brand_ids.append(b_id)
+            card_group_ids.append(best_gid)
+
+    brand_labels = {
+        bid: display_brand(bid, labels, preferred_brands)
+        for bid, labels in observed_brands.items()
+    }
+    group_by_card_id: dict[int, str | None] = {}
+    for card, bid, gid in zip(cards, card_brand_ids, card_group_ids, strict=True):
+        card["brand"] = brand_labels[bid]
+        group_by_card_id[id(card)] = gid
+    facets["brand"] = {brand_labels[bid] for bid in facets["brand"]}
+
     size_labels = {}
     for label in sorted(facets["size"], key=lambda value: (len(value), value.casefold(), value)):
         size_labels.setdefault(size_key(label), label)
@@ -151,22 +212,25 @@ def query(
     cards.sort(key=lambda p: (SIGNAL_RANK[p["price_signal"]] if filters.get("sort") == "dropped" else 0,
                               -p["offer"]["discount"], -p["offer"]["savings"], p["offer"]["current_price"],
                               p["name"], p["store"], p["url"]))
-    if collapse_duplicates and not filters.get("compare") and not filters.get("store"):
-        collapsed: list[dict] = []
-        seen: dict[tuple[str, str, str, str, str], tuple[dict, set[str]]] = {}
-        for card in cards:
-            key = _dedupe_key(card, valid_size)
-            if key not in seen:
-                others: set[str] = set()
-                seen[key] = (card, others)
-                collapsed.append(card)
-            else:
-                winner, others = seen[key]
-                if card["store"] != winner["store"]:
-                    others.add(card["store"])
-        for winner, others in seen.values():
+
+    for card in cards:
+        gid = group_by_card_id.get(id(card))
+        if gid:
+            others = sorted(s for s in group_stores[gid] if s != card["store"])
             if others:
-                winner["other_store_names"] = tuple(sorted(others))
+                card["other_store_names"] = tuple(others)
+                card["exact_group_id"] = gid
+
+    if collapse_duplicates and not filters.get("compare") and not filters.get("store") and not requested_group:
+        collapsed: list[dict] = []
+        seen_groups: set[str] = set()
+        for card in cards:
+            gid = group_by_card_id.get(id(card))
+            if gid is None:
+                collapsed.append(card)
+            elif gid not in seen_groups:
+                seen_groups.add(gid)
+                collapsed.append(card)
         cards = collapsed
     total = len(cards)
     pages = max(1, ceil(total / PAGE_SIZE))

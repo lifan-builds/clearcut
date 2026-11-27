@@ -144,6 +144,7 @@ def read_shared_catalog_snapshot(
         size_value_pattern=catalog.size_value_pattern if catalog is not None else "",
         collapse_duplicates=effective_collapse,
         reconcile_product=catalog.reconcile_product if catalog is not None else None,
+        exact_offer_key=catalog.exact_offer_key if catalog is not None else None,
     )
     if not result["total"]:
         return None

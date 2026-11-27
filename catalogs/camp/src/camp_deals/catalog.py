@@ -192,7 +192,7 @@ CATALOG = Catalog(
         ("mystery ranch", "Mystery Ranch"),
         ("nemo", "NEMO"), ("nemo equipment", "NEMO"),
         ("osprey", "Osprey"), ("osprey packs", "Osprey"),
-        ("outdoor vitals", "Outdoor Vitals"),
+        ("outdoor vitals", "Outdoor Vitals"), ("outdoorvitals", "Outdoor Vitals"),
         ("petzl", "Petzl"),
         ("rab", "Rab"),
         ("sea to summit", "Sea to Summit"),

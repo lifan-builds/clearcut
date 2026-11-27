@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from deal_common.catalog.definition import manufacturer_name
+from deal_common.catalog.definition import brand_id, manufacturer_name
 from deal_common.offers import HISTORY_DAYS
 
 
@@ -44,8 +44,15 @@ def database(path: Path, catalog: str, *, writable: bool = False):
 
 
 def _offer_key(product: dict, offer: dict, brand_aliases) -> tuple:
-    return (product["url"], product["name"], manufacturer_name(product["brand"], brand_aliases=brand_aliases),
-            offer["variant_key"], offer["options"], offer["url"])
+    canonical_brand = manufacturer_name(product["brand"], brand_aliases=brand_aliases)
+    return (
+        product["url"],
+        product["name"],
+        brand_id(canonical_brand, brand_aliases),
+        offer["variant_key"],
+        offer["options"],
+        offer["url"],
+    )
 
 
 def _daily_offers(rows, brand_aliases, *, start: datetime, end: datetime) -> dict[tuple, dict[str, dict]]:

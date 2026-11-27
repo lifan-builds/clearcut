@@ -1,8 +1,8 @@
 """Server-rendered catalog app with read-only snapshots and validated filters."""
 import os
 import re
-import time
-from collections import defaultdict
+import unicodedata
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -15,13 +15,98 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from deal_common.cache_headers import apply_cdn_cache_headers
-from deal_common.catalog.definition import Catalog, manufacturer_name
+from deal_common.catalog.definition import (
+    Catalog,
+    brand_id,
+    clean_brand,
+    compile_brand_aliases,
+    display_brand,
+    manufacturer_name,
+)
 from deal_common.catalog.health import snapshot_health
 from deal_common.catalog.query import FRESHNESS_HOURS, SORTS, is_fresh, query
 from deal_common.catalog.storage import read_offer_history, read_sources
 from deal_common.offers import size_key
 
 ASSETS = Path(__file__).parent
+_BARE_TOOL_LABELS = frozenset({"bare tool", "bare-tool", "tool only", "tool-only"})
+_OPTION_SEP_RE = re.compile(r"\s*([/|])\s*")
+
+
+def _norm_badge_label(value: str | None) -> str:
+    return " ".join(unicodedata.normalize("NFKC", value or "").casefold().split())
+
+
+def deduplicate_badge_labels(labels: Iterable[str | None]) -> list[str]:
+    """Render each distinct package/platform badge once, normalizing Bare tool / Tool only synonyms."""
+    result: list[str] = []
+    seen: set[str] = set()
+    shown_bare = False
+    for raw in labels:
+        label = clean_brand(raw)
+        if not label:
+            continue
+        norm = _norm_badge_label(label)
+        if norm in _BARE_TOOL_LABELS:
+            if shown_bare:
+                continue
+            label = "Bare tool"
+            norm = "bare tool"
+            shown_bare = True
+        if norm in seen:
+            continue
+        seen.add(norm)
+        result.append(label)
+    return result
+
+
+def card_variant_and_badges(card: dict) -> tuple[str, list[str]]:
+    """Compute deduplicated variant line and tag badges without mutating stored offer options."""
+    raw_options = clean_brand(card["offer"].get("options"))
+    fmt = clean_brand(card.get("format"))
+    platform = clean_brand(card.get("platform"))
+    fallback = clean_brand(card.get("variant_fallback"))
+
+    raw_badges: list[str] = []
+    if fmt and (fmt != "Not specified" or raw_options):
+        raw_badges.append(fallback or "Package not specified" if fmt == "Not specified" else fmt)
+    if platform:
+        raw_badges.append(platform)
+    badges = deduplicate_badge_labels(raw_badges)
+    badge_norms = {_norm_badge_label(label) for label in badges}
+    has_bare_badge = "bare tool" in badge_norms
+
+    if raw_options:
+        option_norm = _norm_badge_label(raw_options)
+        if option_norm in _BARE_TOOL_LABELS:
+            if has_bare_badge:
+                variant_text = ""
+            elif badges:
+                badges = deduplicate_badge_labels(["Bare tool", *badges])
+                variant_text = ""
+            else:
+                variant_text = "Bare tool"
+        elif option_norm in badge_norms:
+            variant_text = ""
+        elif has_bare_badge and _OPTION_SEP_RE.search(raw_options):
+            parts = [part.strip() for part in _OPTION_SEP_RE.split(raw_options)]
+            kept: list[str] = []
+            for idx in range(0, len(parts), 2):
+                seg = parts[idx]
+                if seg and _norm_badge_label(seg) not in _BARE_TOOL_LABELS:
+                    kept.append(seg)
+            variant_text = " / ".join(kept)
+        else:
+            variant_text = raw_options
+    else:
+        candidate = fallback or "Standard configuration"
+        candidate_norm = _norm_badge_label(candidate)
+        if (has_bare_badge and candidate_norm in _BARE_TOOL_LABELS) or candidate_norm in badge_norms:
+            variant_text = ""
+        else:
+            variant_text = candidate
+
+    return variant_text, badges
 
 
 def create_app(catalog: Catalog, database: Path, *, public_url: str | None = None) -> FastAPI:
@@ -45,8 +130,8 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
     )
 
     configured = {source.name for source in catalog.sources}
+    compiled_aliases, preferred_brands = compile_brand_aliases(catalog.brand_aliases)
     _sources_cache: dict[str, object] = {"stamp": None, "rows": []}
-    _model_stores_cache: dict[str, object] = {"key": None, "value": {}}
 
     def _db_stamp() -> tuple[int, int] | None:
         try:
@@ -66,37 +151,24 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
             _sources_cache["stamp"] = stamp
         return _sources_cache["rows"]
 
-    def _sig_for(brand_val: str, name_val: str, cat_val: str) -> tuple[str, str, str] | None:
-        if not brand_val or brand_val == "Unspecified":
-            return None
-        lower = name_val.casefold()
-        if lower.startswith(brand_val.casefold() + " "):
-            lower = lower[len(brand_val) + 1:]
-        lower = re.sub(r"\b20\d{2}\b", " ", lower)
-        toks = [t for t in re.findall(r"[a-z0-9.]+", lower) if t not in {"bike", "bikes", "road", "gravel", "mountain", "carbon", "kit", "bare", "tool", "wetsuit", "tent", "pack"}]
-        return (brand_val.casefold(), " ".join(toks[:3]), cat_val) if len(toks) >= 2 else None
-
-    def _model_stores(all_sources: list[dict], now_utc: datetime) -> dict[tuple[str, str, str], set[str]]:
-        stamp = _db_stamp()
-        cache_key = (stamp, int(time.time() // 300))
-        if stamp is not None and _model_stores_cache["key"] == cache_key:
-            return _model_stores_cache["value"]
-        computed: dict[tuple[str, str, str], set[str]] = defaultdict(set)
-        for src in all_sources:
-            if not is_fresh(src["successful_at"], now_utc):
-                continue
-            for raw_prod in src["products"]:
-                prod = catalog.reconcile_product(raw_prod) if catalog.reconcile_product else raw_prod
-                if prod is None:
-                    continue
-                b_name = manufacturer_name(prod["brand"], brand_aliases=catalog.brand_aliases) if catalog.brand_aliases else prod["brand"]
-                s_key = _sig_for(b_name, prod["name"], prod["category"])
-                if s_key:
-                    computed[s_key].add(src["name"])
-        if stamp is not None:
-            _model_stores_cache["key"] = cache_key
-            _model_stores_cache["value"] = computed
-        return computed
+    def _snapshot_brand_label(raw_value: str | None, all_rows: list[dict]) -> str:
+        raw_label = (
+            manufacturer_name(raw_value, brand_aliases=catalog.brand_aliases)
+            if catalog.brand_aliases else clean_brand(raw_value)
+        )
+        target_id = brand_id(raw_label, compiled_aliases=compiled_aliases)
+        if target_id in preferred_brands:
+            return preferred_brands[target_id]
+        observed: set[str] = {raw_label} if raw_label else set()
+        for row in all_rows:
+            for item in row.get("products") or ():
+                candidate = (
+                    manufacturer_name(item.get("brand"), brand_aliases=catalog.brand_aliases)
+                    if catalog.brand_aliases else clean_brand(item.get("brand"))
+                )
+                if brand_id(candidate, compiled_aliases=compiled_aliases) == target_id and candidate:
+                    observed.add(candidate)
+        return display_brand(target_id, observed, preferred_brands)
 
     @app.middleware("http")
     async def headers(request, call_next):
@@ -123,6 +195,7 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
               max_price: float = Query(0, ge=0, le=1000000),
               min_discount: float = Query(0, ge=0, le=100), stock: bool = False,
               compare: bool = False,
+              group: str = Query("", max_length=64),
               sort: Literal["discount", "dropped"] = "discount",
               page: int = Query(1, ge=1, le=100000)):
         if brand and catalog.brand_aliases:
@@ -130,7 +203,11 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
         filters = {"q": q, "category": category, "brand": brand, "store": store, "size": size, "format": format,
                    "platform": platform, "min_reference": min_reference, "max_price": max_price,
                    "min_discount": min_discount, "stock": stock, "sort": sort, "page": page}
-        query_filters = {**filters, "compare": compare} if compare else filters
+        query_filters = {**filters}
+        if compare:
+            query_filters["compare"] = True
+        if group:
+            query_filters["group"] = group
         all_sources = sources()
         result = query(
             all_sources,
@@ -140,28 +217,41 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
             size_value_pattern=catalog.size_value_pattern,
             collapse_duplicates=catalog.collapse_duplicates,
             reconcile_product=catalog.reconcile_product,
+            exact_offer_key=catalog.exact_offer_key,
         )
+        if brand:
+            requested_brand_id = brand_id(brand, compiled_aliases=compiled_aliases)
+            filters["brand"] = next(
+                (label for label in result["facets"]["brand"]
+                 if brand_id(label, compiled_aliases=compiled_aliases) == requested_brand_id),
+                brand,
+            )
         if size:
             requested_size_key = size_key(size)
             filters["size"] = next((label for label in result["facets"]["size"]
                                     if size_key(label) == requested_size_key), size)
-        now_utc = datetime.now(UTC)
-        model_stores = _model_stores(all_sources, now_utc)
 
         for card in result["cards"]:
             card["history_url"] = "/history?" + urlencode({"source": card["store"], "product": card["url"],
                                                            "variant": card["offer"]["variant_key"]})
             card["variant_fallback"] = catalog.variant_fallback(card) if catalog.variant_fallback else ""
-            s_key = _sig_for(card["brand"], card["name"], card["category"])
-            other_stores = set(card.get("other_store_names") or ())
-            if s_key:
-                other_stores |= model_stores[s_key]
-            other_stores.discard(card["store"])
+            card["variant_text"], card["badges"] = card_variant_and_badges(card)
+            other_stores = tuple(card.get("other_store_names") or ())
             other_cnt = len(other_stores)
             card["other_shops"] = other_cnt
-            if other_cnt:
-                compare_q = card["name"] if card.get("other_store_names") else (f"{card['brand']} {s_key[1]}" if s_key else card["name"])
-                card["compare_url"] = "/?" + urlencode({"q": compare_q, "compare": "true"}) + "#deals"
+            if other_cnt and card.get("exact_group_id"):
+                compare_params: dict[str, object] = {"group": card["exact_group_id"], "compare": "true"}
+                if category:
+                    compare_params["category"] = category
+                if min_reference != catalog.default_reference:
+                    compare_params["min_reference"] = min_reference
+                if max_price:
+                    compare_params["max_price"] = max_price
+                if min_discount:
+                    compare_params["min_discount"] = min_discount
+                if stock:
+                    compare_params["stock"] = "true"
+                card["compare_url"] = "/?" + urlencode(compare_params) + "#deals"
             else:
                 card["compare_url"] = ""
 
@@ -169,6 +259,8 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
             params = {**filters, "page": number, "stock": str(stock).lower()}
             if compare:
                 params["compare"] = "true"
+            if group:
+                params["group"] = group
             return "/?" + urlencode(params) + "#deals"
 
         labels = {"q": "Search", "category": "Category", "brand": "Brand", "store": "Retailer",
@@ -176,12 +268,19 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
                   "min_reference": "Reference ≥ $", "max_price": "Budget ≤ $",
                   "min_discount": "Discount ≥", "stock": "Reported in stock"}
         active_filters = []
+        if group:
+            cleared_group = {**filters, "stock": str(stock).lower(), "page": 1}
+            active_filters.append({"label": "Comparing exact offer", "url": "/?" + urlencode(cleared_group) + "#deals"})
         for key, label in labels.items():
             value = filters[key]
             if not value:
                 continue
             cleared = {**filters, key: "false" if key == "stock" else (0 if key in {"min_reference", "max_price", "min_discount"} else ""),
                        "stock": "false" if key == "stock" else str(stock).lower(), "page": 1}
+            if group:
+                cleared["group"] = group
+            if compare:
+                cleared["compare"] = "true"
             if key == "stock":
                 display = label
             elif isinstance(value, (int, float)):
@@ -193,14 +292,17 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
             "catalog": catalog, "filters": filters, "result": result, "active_filters": active_filters,
             "previous": page_url(result["page"] - 1), "next": page_url(result["page"] + 1),
             "source_count": len(catalog.sources), "freshness_hours": FRESHNESS_HOURS,
-            "sorts": {key: (label, "/?" + urlencode({**filters, "sort": key, "page": 1, "stock": str(stock).lower()}) + "#deals")
+            "sorts": {key: (label, "/?" + urlencode({**filters, "sort": key, "page": 1, "stock": str(stock).lower(),
+                                                     **({"compare": "true"} if compare else {}),
+                                                     **({"group": group} if group else {})}) + "#deals")
                       for key, label in SORTS.items()},
         })
 
     @app.get("/history", response_class=HTMLResponse)
     def history(request: Request, source: str = Query(..., max_length=100),
                 product: str = Query(..., max_length=2000), variant: str = Query(..., max_length=100)):
-        for row in sources():
+        all_rows = sources()
+        for row in all_rows:
             if row["name"] != source:
                 continue
             for item in row["products"]:
@@ -210,8 +312,7 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
                     if offer["variant_key"] == variant:
                         observations = read_offer_history(database, catalog.slug, source, item, offer,
                                                           now=datetime.now(UTC), brand_aliases=catalog.brand_aliases)
-                        display_item = {**item, "brand": manufacturer_name(
-                            item["brand"], brand_aliases=catalog.brand_aliases)} if catalog.brand_aliases else item
+                        display_item = {**item, "brand": _snapshot_brand_label(item.get("brand"), all_rows)}
                         return templates.TemplateResponse(request=request, name="history.html", context={
                             "catalog": catalog, "product": display_item, "offer": offer, "store": source,
                             "observations": observations})

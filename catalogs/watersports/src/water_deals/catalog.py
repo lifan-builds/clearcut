@@ -1,7 +1,9 @@
 import re
+import unicodedata
 from pathlib import Path
 
 from deal_common.catalog.definition import Catalog, Classification
+from deal_common.catalog.query import default_exact_offer_key
 from deal_common.config import RetailerConfig
 from deal_common.models import Product
 
@@ -105,7 +107,103 @@ def _shopify(name: str, domain: str, *collections: str, limit: int = 250) -> Ret
     )
 
 
-def is_foil_component(name: str, product_type: str = "") -> bool:
+_CABRINHA_PACK_RE = re.compile(
+    r"mk\s*(?:ii|2) foil kit (?:wing|front wing|rear wing) (?:pack|set)"
+)
+_COMPONENT_PACK_RE = re.compile(
+    r"(?:foil|hydrofoil) (?:front wing|rear wing|front and rear wing|stabilizer) (?:pack|set)"
+)
+_WHOLE_PACKAGE_HINT_RE = re.compile(
+    r"\b(?:boards?|foilboards?|complete|assembled|full system|masts?|fuselages?)\b"
+)
+_WATER_BOARD_HINT_RE = re.compile(
+    r"\b(?:wing\s+craft|wing\s+foil\s+boards?|foil\s*boards?|surfboards?|paddle\s*boards?|sups?|downwind\s+boards?)\b",
+    re.IGNORECASE,
+)
+_WATER_BOARD_SUFFIX_RE = re.compile(
+    r"(?:\s+(?:wing\s+foil\s+boards?|foil\s*boards?|wing\s+boards?|boards?))+$",
+    re.IGNORECASE,
+)
+_VOLUME_L_RE = re.compile(r"\b(\d{2,3}(?:\.\d+)?)\s*l(?:iters?|itres?)?\b", re.IGNORECASE)
+_BOARD_LENGTH_FT_IN_RE = re.compile(r"\b(\d)\s*'\s*(\d{1,2}(?:\.\d+)?)\s*\"?")
+_BOARD_WIDTH_RE = re.compile(r"(?:\bx\b|(?<=\d)\s*x\s*|\bwidth\s*:?\s*)(\d{1,2}(?:\.\d+)?)\s*\"?", re.IGNORECASE)
+
+
+def _label(value: str | None) -> str:
+    return " ".join(unicodedata.normalize("NFKC", value or "").casefold().split())
+
+
+def _is_tideline_component_pack(name: str | None, brand: str | None, package_fields: list[str | None]) -> bool:
+    norm_brand = _label(brand)
+    title = _PROMO_SUFFIX_RE.sub("", _label(name)).strip()
+    is_cabrinha = norm_brand == "cabrinha"
+    if norm_brand:
+        title = title.removeprefix(norm_brand + " ")
+    if not is_cabrinha and title.startswith("cabrinha "):
+        is_cabrinha = True
+        title = title.removeprefix("cabrinha ")
+
+    if not (
+        (is_cabrinha and _CABRINHA_PACK_RE.fullmatch(title))
+        or _COMPONENT_PACK_RE.fullmatch(title)
+    ):
+        return False
+
+    return not any(_WHOLE_PACKAGE_HINT_RE.search(_label(v)) for v in package_fields)
+
+
+def route_tideline_pack(product: dict | None) -> dict | None:
+    if product is None or product.get("category") != "Foils & wings":
+        return product
+    package_fields: list[str | None] = [product.get("format")]
+    package_fields.extend(o.get("options") for o in product.get("offers") or ())
+    if _is_tideline_component_pack(product.get("name"), product.get("brand"), package_fields):
+        return {**product, "category": "Foil components"}
+    return product
+
+
+def _norm_water_dims(raw: str | None) -> str:
+    text = unicodedata.normalize("NFKC", raw or "")
+    return text.replace("′", "'").replace("’", "'").replace("″", '"').replace("”", '"').replace("×", "x")
+
+
+def exact_offer_key(
+    product: dict,
+    offer: dict,
+    brand_key: str,
+    valid_size_value: str | None,
+) -> tuple[str, ...] | None:
+    category = _label(product.get("category"))
+    raw_title = _PROMO_SUFFIX_RE.sub("", _label(product.get("name"))).strip()
+    variant_text = _norm_water_dims(f"{offer.get('size') or ''} {offer.get('options') or ''}").strip()
+    vol_match = _VOLUME_L_RE.search(variant_text)
+    len_match = _BOARD_LENGTH_FT_IN_RE.search(variant_text)
+    is_board = (
+        category in {"foils & wings", "surfboards & sups"}
+        and (bool(_WATER_BOARD_HINT_RE.search(raw_title)) or bool(vol_match) or bool(len_match))
+    )
+    if is_board:
+        if not brand_key or brand_key == "unspecified":
+            return None
+        if not vol_match and not len_match:
+            return None
+        model = raw_title
+        if brand_key and model.startswith(brand_key + " "):
+            model = model[len(brand_key) + 1:].strip()
+        model = _WATER_BOARD_SUFFIX_RE.sub("", model).strip()
+        if not model:
+            return None
+        vol = f"{float(vol_match[1]):g}l" if vol_match else ""
+        length = f"{len_match[1]}'{float(len_match[2]):g}" if len_match else ""
+        width_match = _BOARD_WIDTH_RE.search(variant_text)
+        width = f"{float(width_match[1]):g}" if width_match else ""
+        return ("water_board", brand_key, category, model, vol, length, width)
+    return default_exact_offer_key(product, offer, brand_key, valid_size_value)
+
+
+def is_foil_component(name: str, product_type: str = "", package_fields: tuple[str | None, ...] | list[str | None] = ()) -> bool:
+    if any(_WHOLE_PACKAGE_HINT_RE.search(_label(v)) for v in package_fields):
+        return False
     norm_title = re.sub(r"\s+", " ", (name or "").strip()).casefold()
     stripped_title = _PROMO_SUFFIX_RE.sub("", norm_title).strip()
     kind = re.sub(r"\s+", " ", (product_type or "").strip()).casefold()
@@ -117,9 +215,13 @@ def is_foil_component(name: str, product_type: str = "") -> bool:
 
 
 def reconcile_product(row: dict) -> dict | None:
-    if row.get("category") == "Foils & wings" and is_foil_component(row.get("name") or "", row.get("source_category") or ""):
-        return {**row, "category": "Foil components"}
-    return row
+    package_fields: list[str | None] = [row.get("format")]
+    package_fields.extend(o.get("options") for o in row.get("offers") or ())
+    if row.get("category") == "Foils & wings" and is_foil_component(
+        row.get("name") or "", row.get("source_category") or "", package_fields
+    ):
+        row = {**row, "category": "Foil components"}
+    return route_tideline_pack(row)
 
 
 def classify(product: Product) -> Classification | None:
@@ -135,7 +237,10 @@ def classify(product: Product) -> Classification | None:
         return None
     if re.search(r"\b(?:surfboard fins?|thruster fins?|quad fins?|single fins?|future fins?|fcs ii)\b", combined):
         return None
-    if is_foil_component(product.name, product.product_type or ""):
+    offer_options = [o.options for o in product.offers]
+    if is_foil_component(product.name, product.product_type or "", offer_options) or _is_tideline_component_pack(
+        product.name, product.brand, offer_options
+    ):
         return Classification("Foil components")
     if _FOIL_WING_RE.search(combined):
         return Classification("Foils & wings")
@@ -166,6 +271,7 @@ CATALOG = Catalog(
     ),
     opt_in_categories=("Foil components",),
     reconcile_product=reconcile_product,
+    exact_offer_key=exact_offer_key,
     sources=(
         _shopify("REAL Watersports", "www.realwatersports.com", "kiteboarding-sale", "surfing-sale", "wetsuit-sale", "air-box-hand-picked-all-wings"),
         _shopify("Houston Kiteboarding", "houstonkiteboarding.com", "foil-boards", "all-kite-foil", "armstrong-foils", "aluula-wing-kite-products"),
@@ -206,6 +312,7 @@ CATALOG = Catalog(
         ("hardy", "Hardy"),
         ("hatch", "Hatch Outdoors"), ("hatch outdoors", "Hatch Outdoors"),
         ("lamson", "Waterworks-Lamson"), ("waterworks-lamson", "Waterworks-Lamson"),
+        ("lift", "Lift"), ("lift foils", "Lift"),
         ("liquid force", "Liquid Force"),
         ("mystic", "Mystic"),
         ("naish", "Naish"),

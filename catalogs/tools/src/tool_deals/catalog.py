@@ -1,9 +1,12 @@
 import re
+import unicodedata
 from pathlib import Path
 
 from deal_common.catalog.definition import Catalog, Classification
+from deal_common.catalog.query import default_exact_offer_key
 from deal_common.config import RetailerConfig
 from deal_common.models import Product
+from deal_common.offers import size_key
 
 _EXCLUDED_TAGS = frozenset({
     "used", "pre-owned", "refurbished", "reconditioned", "open box",
@@ -113,6 +116,76 @@ _CORDLESS_RE = re.compile(
     r"flexvolt|lxt|xgt|lithium[- ]?ion|battery[- ]?powered)\b",
     re.IGNORECASE,
 )
+
+
+_NON_TOOL_MPN_TOKENS = frozenset({
+    "m12", "m18", "12v", "18v", "20v", "24v", "36v", "40v", "60v", "80v",
+    "110v", "115v", "120v", "208v", "220v", "230v", "240v", "460v", "480v", "575v", "600v",
+    "1ph", "3ph", "1hp", "2hp", "3hp", "5hp", "7hp", "1x", "2x", "3x", "6pt", "12pt",
+})
+_TOOL_MPN_RE = re.compile(
+    r"\b([A-Za-z]{2,5}-?\d{2,5}[A-Za-z0-9-]{0,6}|\d{4}-\d{2}[A-Za-z]?)\b"
+)
+_TOOL_UNIT_TOKEN_RE = re.compile(
+    r"^\d+(?:mm|cm|in|ft|lb|oz|ga|hp|ph|ah|wh|rpm|opm|spm|ipm|bpm|cfm|psi|amp|amps|volt|volts|v|pc|pk|pt)$",
+    re.IGNORECASE,
+)
+_DRIVE_SIZE_RE = re.compile(
+    r'(?<!\d)(1/4|3/8|1/2|3/4)\s*(?:"|″|\'\'|-?\s*in(?:ch(?:es)?|\.)?(?![a-z]))'
+    r'|\b(1)\s*(?:"|″|-?\s*in(?:ch)?\.?)\s*(?:dr(?:ive)?|anvil|square|impact)\b',
+    re.IGNORECASE,
+)
+_BARE_OPTION_VALUES = frozenset({"bare tool", "bare-tool", "tool only", "tool-only"})
+
+
+def _extract_tool_mpns(title: str, brand_key: str) -> tuple[str, ...]:
+    text = unicodedata.normalize("NFKC", title or "")
+    found: list[str] = []
+    for raw in _TOOL_MPN_RE.findall(text):
+        low = raw.casefold()
+        if low in _NON_TOOL_MPN_TOKENS or (brand_key and low == brand_key):
+            continue
+        if _TOOL_UNIT_TOKEN_RE.fullmatch(low) or re.fullmatch(r"20\d{2}", low):
+            continue
+        if not any(ch.isdigit() for ch in raw):
+            continue
+        if sum(ch.isdigit() for ch in raw) < 2:
+            continue
+        code = raw.upper()
+        if code not in found:
+            found.append(code)
+    return tuple(found)
+
+
+def exact_offer_key(
+    product: dict,
+    offer: dict,
+    brand_key: str,
+    valid_size_value: str | None,
+) -> tuple[str, ...] | None:
+    fmt = " ".join((product.get("format") or "").split()).casefold()
+    if not brand_key or brand_key == "unspecified" or fmt == "bundle":
+        return default_exact_offer_key(product, offer, brand_key, valid_size_value)
+    title = product.get("name") or ""
+    mpns = _extract_tool_mpns(title, brand_key)
+    if len(mpns) != 1:
+        return default_exact_offer_key(product, offer, brand_key, valid_size_value)
+    norm_text = unicodedata.normalize("NFKC", f"{title} {offer.get('options') or ''}").replace("″", '"').replace("”", '"')
+    drive_match = _DRIVE_SIZE_RE.search(norm_text)
+    drive = (drive_match[1] or drive_match[2]) if drive_match else ""
+    options_norm = " ".join(unicodedata.normalize("NFKC", offer.get("options") or "").casefold().split())
+    if fmt == "bare tool" and options_norm in _BARE_OPTION_VALUES:
+        options_norm = ""
+    return (
+        "tool_mpn",
+        brand_key,
+        " ".join((product.get("category") or "").split()).casefold(),
+        mpns[0],
+        drive,
+        fmt,
+        size_key(valid_size_value),
+        options_norm,
+    )
 
 
 def variant_fallback(product: dict) -> str:
@@ -275,7 +348,9 @@ CATALOG = Catalog(
     theme_color="#282922",
     mark="↘",
     formats=("Bare tool", "Kit", "Bundle", "Not specified"),
+    collapse_duplicates=True,
     variant_fallback=variant_fallback,
+    exact_offer_key=exact_offer_key,
     brand_aliases=(
         ("axiom", "Axiom"), ("axiom precision", "Axiom"),
         ("bessey", "Bessey"), ("bessey tools", "Bessey"),

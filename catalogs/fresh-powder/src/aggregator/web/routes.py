@@ -166,6 +166,32 @@ async def _store_filter_context(*, store: str | None, **filters) -> dict:
     return {"stores": stores, "store_counts": counts, "current_store": store}
 
 
+def _has_active_filters(
+    *,
+    category: str | None,
+    store: str | None,
+    brand: str | None,
+    min_discount: float,
+    min_price: float,
+    min_reference: float,
+    year_from: int | None,
+    size: str,
+    max_price: float,
+    tax_free: str,
+    q: str,
+    size_min: int | None,
+    size_max: int | None,
+    reviewed: str,
+    currency: str,
+    include_clothing: bool,
+) -> bool:
+    return any((
+        category, store, brand, min_discount > 0, min_price > 0, min_reference > 0,
+        year_from is not None, size, max_price > 0, tax_free == "1", q,
+        size_min is not None, size_max is not None, reviewed == "1", currency, include_clothing,
+    ))
+
+
 @router.get("/", response_class=HTMLResponse)
 async def index(
     request: Request,
@@ -216,7 +242,7 @@ async def index(
     store_counts = store_context["store_counts"]
     deal_count = store_counts.get(store, 0) if store else sum(store_counts.values())
 
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request, name="index.html",
         context={
             "deals": deals,
@@ -249,6 +275,14 @@ async def index(
             **pagination_context(request, offset),
         },
     )
+    if deal_count == 0 and not _has_active_filters(
+        category=category, store=store, brand=brand, min_discount=min_discount,
+        min_price=min_price, min_reference=min_reference, year_from=year_from, size=size,
+        max_price=max_price, tax_free=tax_free, q=q, size_min=size_min, size_max=size_max,
+        reviewed=reviewed, currency=currency, include_clothing=include_clothing,
+    ):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @router.get("/robots.txt", response_class=PlainTextResponse)
@@ -321,6 +355,8 @@ async def deals_fragment(
     offset: int = Query(0, alias="offset", ge=0),
 ):
     """htmx partial — returns deal cards for dynamic filtering."""
+    if not currency and (min_price > 0 or max_price > 0 or min_reference > 0 or sort in {"price_low", "price_high"}):
+        currency = "USD"
     is_load_more = offset > 0
     deals, has_more, _ = await _fetch_deals(
         category=category, store=store, brand=brand, min_discount=min_discount,
@@ -343,7 +379,7 @@ async def deals_fragment(
     else:
         store_counts = store_context["store_counts"]
         deal_count = store_counts.get(store, 0) if store else sum(store_counts.values())
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request, name=template,
         context={
             "deals": deals, "deal_count": deal_count,
@@ -354,6 +390,16 @@ async def deals_fragment(
             "current_max_price": max_price, "current_category": category,
         },
     )
+    if (is_load_more and not deals) or (
+        not is_load_more and deal_count == 0 and not _has_active_filters(
+            category=category, store=store, brand=brand, min_discount=min_discount,
+            min_price=min_price, min_reference=min_reference, year_from=year_from, size=size,
+            max_price=max_price, tax_free=tax_free, q=q, size_min=size_min, size_max=size_max,
+            reviewed=reviewed, currency=currency, include_clothing=include_clothing,
+        )
+    ):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @router.get("/healthz")

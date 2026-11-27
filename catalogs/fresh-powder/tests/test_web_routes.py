@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 from functools import partial
+from pathlib import Path
 
 import aggregator.auth_db as auth_db_module
 import aggregator.db as db_module
@@ -538,6 +539,55 @@ def test_cdn_cache_headers_on_public_html_htmx_and_excluded_routes(isolated_app,
     with TestClient(app_module.create_app()) as private_client:
         assert "CDN-Cache-Control" not in private_client.get("/").headers
         assert "CDN-Cache-Control" not in private_client.get("/invite").headers
+
+
+def test_stale_empty_unfiltered_and_empty_load_more_are_never_edge_cached(isolated_app, monkeypatch):
+    monkeypatch.setenv("PUBLIC_MODE", "1")
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    asyncio.run(db_module.init_db(isolated_app))
+
+    with TestClient(app_module.create_app()) as client:
+        stale_home = client.get("/")
+        assert stale_home.status_code == 200
+        assert stale_home.headers.get("Cache-Control") == "no-store"
+        assert "CDN-Cache-Control" not in stale_home.headers
+
+        stale_deals = client.get("/deals", headers={"HX-Request": "true"})
+        assert stale_deals.status_code == 200
+        assert stale_deals.headers.get("Cache-Control") == "no-store"
+        assert "CDN-Cache-Control" not in stale_deals.headers
+
+        empty_more = client.get("/deals?offset=60", headers={"HX-Request": "true"})
+        assert empty_more.status_code == 200
+        assert empty_more.headers.get("Cache-Control") == "no-store"
+        assert "CDN-Cache-Control" not in empty_more.headers
+
+    # With >60 fresh deals, /deals?offset=60 returns the next batch and IS edge-cacheable.
+    now = datetime.now(UTC).replace(tzinfo=None)
+    deals = []
+    for i in range(65):
+        deal = _make_deal(f"Test Ski {i}")
+        deal.scraped_at = now
+        deals.append(deal)
+    asyncio.run(db_module.upsert_deals(deals, isolated_app))
+    with TestClient(app_module.create_app()) as client:
+        page2 = client.get("/deals?offset=60", headers={"HX-Request": "true"})
+        assert page2.status_code == 200
+        assert len(BeautifulSoup(page2.text, "html.parser").select("article.deal-card")) == 5
+        assert page2.headers.get("CDN-Cache-Control") == "public, s-maxage=86400, stale-while-revalidate=3600"
+
+        # /deals applies the same default USD currency rule as / for price sorting.
+        price_sorted = client.get("/deals?sort=price_low", headers={"HX-Request": "true"})
+        assert price_sorted.status_code == 200
+        assert "65 deals found" in price_sorted.text
+
+
+def test_freshpowder_desktop_header_wraps_world_dock_before_1280px():
+    css_path = Path(__file__).resolve().parents[1] / "src/aggregator/web/static/field-guide.css"
+    css = css_path.read_text()
+    assert "@media (max-width: 1420px)" in css
+    assert "white-space: nowrap;" in css
+
 
 
 def test_homepage_has_no_focusable_link_inside_visually_hidden_heading(isolated_app, monkeypatch):

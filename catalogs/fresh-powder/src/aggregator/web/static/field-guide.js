@@ -84,17 +84,27 @@ if (form) {
     }
     document.getElementById("request-error").hidden = true;
   });
+  document.body.addEventListener("htmx:beforeSwap", (event) => {
+    if (event.detail.elt?.closest?.(".load-more-wrap") && !(event.detail.serverResponse || "").trim()) {
+      event.detail.shouldSwap = false;
+      document.getElementById("request-error").hidden = false;
+    }
+  });
   document.body.addEventListener("htmx:afterSwap", (event) => {
     if (event.detail.target.id !== "deal-grid") return;
     const params = new URLSearchParams();
-    for (const [key, value] of new FormData(form))
-      if (value && value !== "0") params.set(key, value);
+    for (const [key, value] of new FormData(form)) {
+      if (!value || value === "0") continue;
+      if (key === "sort" && value === "discount_pct") continue;
+      params.set(key, value);
+    }
     history.replaceState(
       null,
       "",
       "/" + (params.size ? "?" + params.toString() : ""),
     );
     syncPresets();
+    if (typeof syncSnowLocker === "function") syncSnowLocker();
   });
   for (const name of ["htmx:responseError", "htmx:sendError"])
     document.body.addEventListener(name, () => {

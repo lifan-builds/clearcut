@@ -293,6 +293,8 @@ input::placeholder {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  flex-shrink: 1;
 }
 .top-search {
   display: flex;
@@ -303,14 +305,15 @@ input::placeholder {
   border-radius: 999px;
   padding: 0 13px;
   height: 38px;
-  width: clamp(185px, 19vw, 265px);
+  width: clamp(160px, 16vw, 225px);
+  min-width: 0;
   color: var(--muted);
   transition: border-color 160ms var(--ease-spring), background-color 160ms var(--ease-spring), width 200ms var(--ease-spring);
 }
 .top-search:focus-within {
   background: var(--surface);
   border-color: var(--text);
-  width: clamp(205px, 22vw, 300px);
+  width: clamp(180px, 18vw, 255px);
 }
 .top-search svg {
   flex-shrink: 0;
@@ -364,6 +367,8 @@ input::placeholder {
   color: #ffffff;
   font-size: 12px;
   font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .tax-free-pill {
   display: inline-block;
@@ -2052,7 +2057,7 @@ th small {
 }
 
 /* ---- Responsive ---- */
-@media (max-width: 1240px) {
+@media (max-width: 1420px) {
   .header-shell {
     height: auto;
     min-height: 60px;
