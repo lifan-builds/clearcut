@@ -69,6 +69,33 @@ _PACK_RE = re.compile(
     r"mountaineering packs?|climbing packs?|expedition packs?|haul bags?|duffels?"
     r")\b"
 )
+_TRAVEL_LUGGAGE_RE = re.compile(
+    r"\b(?:global travel bag roller|travel roller bags?|wheeled luggage|roller bags?)\b"
+)
+_TRAVEL_BAG_RE = re.compile(
+    r"\b(?:global travel bags?|global (?:pro 3-way )?briefcases?)\b"
+)
+
+
+def is_travel_bag(name: str) -> bool:
+    cleaned = re.sub(r"\s+", " ", (name or "").strip()).casefold()
+    return bool(_TRAVEL_LUGGAGE_RE.search(cleaned) or _TRAVEL_BAG_RE.search(cleaned))
+
+
+def reconcile_product(row: dict) -> dict | None:
+    title = re.sub(r"\s+", " ", (row.get("name") or "").strip()).casefold()
+    kind = re.sub(r"\s+", " ", (row.get("source_category") or "").strip()).casefold()
+    if is_travel_bag(title):
+        if row.get("category") != "Travel bags & luggage":
+            return {**row, "category": "Travel bags & luggage"}
+        return row
+    if (
+        (_SLEEP_PAD_RE.search(title) or _SLEEP_PAD_RE.search(kind))
+        and not _SLEEP_BAG_RE.search(title)
+        and row.get("category") != "Sleeping pads"
+    ):
+        return {**row, "category": "Sleeping pads"}
+    return row
 
 
 def _shopify(name: str, domain: str, *collections: str, limit: int = 250) -> RetailerConfig:
@@ -93,12 +120,16 @@ def classify(product: Product) -> Classification | None:
         return None
     if _SHELTER_RE.search(combined):
         return Classification("Tents & shelters")
+    if (_SLEEP_PAD_RE.search(title) or _SLEEP_PAD_RE.search(kind)) and not _SLEEP_BAG_RE.search(title):
+        return Classification("Sleeping pads")
     if _SLEEP_BAG_RE.search(combined):
         return Classification("Sleeping bags & quilts")
     if _SLEEP_PAD_RE.search(combined):
         return Classification("Sleeping pads")
     if _CLIMB_RE.search(combined):
         return Classification("Climbing & mountaineering")
+    if is_travel_bag(title):
+        return Classification("Travel bags & luggage")
     if _PACK_RE.search(combined) and not re.search(r"\b(fanny|hip|waist|sling|crossbody|tote|wallet|pouch)\b", combined):
         return Classification("Backpacks")
     return None
@@ -116,7 +147,10 @@ CATALOG = Catalog(
         "Sleeping pads",
         "Backpacks",
         "Climbing & mountaineering",
+        "Travel bags & luggage",
     ),
+    opt_in_categories=("Travel bags & luggage",),
+    reconcile_product=reconcile_product,
     sources=(
         _shopify("Gossamer Gear", "www.gossamergear.com", "holiday-sale-2026", "shelters-sleeping-pads", "backpacks"),
         _shopify("Sea to Summit", "seatosummit.com", "sale-discontinued", "sleep-system-gear", "tents"),

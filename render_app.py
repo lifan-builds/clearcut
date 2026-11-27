@@ -62,6 +62,15 @@ def create_multi_host_app(data_dir: Path | None = None):
         nonlocal portal_app
         if portal_app is None:
             snow_db = Path(os.environ.get("DATABASE_PATH", base_dir / "deals.db"))
+            catalogs_by_slug = {
+                slug: __import__(mod_name, fromlist=["CATALOG"]).CATALOG
+                for slug, (mod_name, _, _, _) in (
+                    ("cycling", _CATALOG_HOSTS["bigring"]),
+                    ("tools", _CATALOG_HOSTS["benchdrop"]),
+                    ("camp", _CATALOG_HOSTS["highline"]),
+                    ("watersports", _CATALOG_HOSTS["tideline"]),
+                )
+            }
             portal_app = create_portal_app(
                 default_portal_catalogs(
                     snow_db=snow_db if snow_db.is_file() else None,
@@ -69,6 +78,7 @@ def create_multi_host_app(data_dir: Path | None = None):
                     tools_db=base_dir / "tools.db" if (base_dir / "tools.db").is_file() else None,
                     camp_db=base_dir / "camp.db" if (base_dir / "camp.db").is_file() else None,
                     watersports_db=base_dir / "watersports.db" if (base_dir / "watersports.db").is_file() else None,
+                    catalogs_by_slug=catalogs_by_slug,
                 ),
                 public_url=os.environ.get("CLEARCUT_PUBLIC_URL", "https://clearcut.clifan.com"),
             )

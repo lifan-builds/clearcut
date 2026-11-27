@@ -401,3 +401,63 @@ def test_tools_brand_aliases_normalize_vendor_variants(raw_brand, canonical):
         offers=[VariantOffer("1", f"{url}?variant=1", 800, 1200, availability="in_stock")],
     )
     assert normalize([saw], CATALOG, "example.com")[0]["brand"] == canonical
+
+
+def test_bench_drop_replaces_standard_fallback_with_explicit_battery_unknown_notice(tmp_path):
+    from bs4 import BeautifulSoup
+    from deal_common.catalog.storage import save_source
+    from deal_common.catalog.web import create_app
+    from fastapi.testclient import TestClient
+
+    router = Product(
+        "DEWALT, DCW600B, Router, 20 V, Brushless Motor, 25,500 RPM, Cordless, Fixed Base, Dual LEDs, Variable Speed",
+        "https://fastenersinc.myshopify.com/products/dcw600b",
+        99,
+        249,
+        product_type="Routers",
+        brand="DeWalt",
+        offers=[VariantOffer("1", "https://fastenersinc.myshopify.com/products/dcw600b?variant=1", 99, 249, availability="in_stock")],
+    )
+    bare_saw = Product(
+        "Makita XVJ04Z 18V LXT Brushless Cordless Jig Saw, Tool Only",
+        "https://fastenersinc.myshopify.com/products/xvj04z",
+        99,
+        219,
+        product_type="Jig Saws",
+        brand="Makita",
+        offers=[VariantOffer("2", "https://fastenersinc.myshopify.com/products/xvj04z?variant=2", 99, 219, availability="in_stock")],
+    )
+    welder = Product(
+        "ESAB Rogue EM 190 MIG Welder - 0700301083",
+        "https://fastenersinc.myshopify.com/products/esab",
+        999,
+        2059,
+        product_type="MIG Welding Machine",
+        brand="ESAB",
+        offers=[VariantOffer("3", "https://fastenersinc.myshopify.com/products/esab?variant=3", 999, 2059, availability="in_stock")],
+    )
+    db = tmp_path / "tools.db"
+    save_source(
+        db,
+        "tools",
+        "Fasteners Inc",
+        datetime.now(UTC).isoformat(),
+        normalize([router, bare_saw, welder], CATALOG, "fastenersinc.myshopify.com"),
+        "complete",
+        {},
+    )
+    client = TestClient(create_app(CATALOG, db))
+    soup = BeautifulSoup(client.get("/").text, "html.parser")
+    cards = {c.select_one("h3").get_text(strip=True): c for c in soup.select("article.deal-card")}
+
+    router_card = cards[router.name]
+    assert router_card.select_one(".variant").get_text(strip=True) == "Battery/charger inclusion not specified"
+    assert "Standard" not in router_card.get_text()
+
+    bare_card = cards[bare_saw.name]
+    assert "Bare tool" in [s.get_text(strip=True) for s in bare_card.select(".tags span")]
+    assert "Standard configuration" not in bare_card.get_text()
+
+    welder_card = cards[welder.name]
+    assert welder_card.select_one(".variant").get_text(strip=True) == "Package not specified"
+    assert "Standard" not in welder_card.get_text()

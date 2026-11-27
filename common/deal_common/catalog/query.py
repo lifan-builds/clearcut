@@ -1,4 +1,6 @@
 """Choose one eligible offer per listing before counts, order, and pagination."""
+import re
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from math import ceil
 
@@ -28,12 +30,50 @@ def is_fresh(timestamp: str | None, now: datetime) -> bool:
         return False
 
 
-def query(sources: list[dict], filters: dict, *, now: datetime | None = None,
-          brand_aliases: tuple[tuple[str, str], ...] = ()) -> dict:
+def _norm_key(value: str | None) -> str:
+    return re.sub(r"\s+", " ", (value or "").strip()).casefold()
+
+
+def _dedupe_key(card: dict, valid_size: Callable[[str | None], str | None]) -> tuple[str, str, str, str, str]:
+    offer = card["offer"]
+    return (
+        _norm_key(card.get("brand")),
+        _norm_key(card.get("name")),
+        _norm_key(card.get("category")),
+        size_key(valid_size(offer.get("size"))),
+        _norm_key(offer.get("options")),
+    )
+
+
+def query(
+    sources: list[dict],
+    filters: dict,
+    *,
+    now: datetime | None = None,
+    brand_aliases: tuple[tuple[str, str], ...] = (),
+    opt_in_categories: tuple[str, ...] = (),
+    size_value_pattern: str = "",
+    collapse_duplicates: bool = False,
+    reconcile_product: Callable[[dict], dict | None] | None = None,
+) -> dict:
     now = now or datetime.now(UTC)
     requested_brand = filters.get("brand")
     if requested_brand and brand_aliases:
         requested_brand = manufacturer_name(requested_brand, brand_aliases=brand_aliases)
+    opt_in = set(opt_in_categories)
+    requested_category = filters.get("category") or ""
+    size_re = re.compile(size_value_pattern, re.IGNORECASE) if size_value_pattern else None
+
+    def valid_size(raw: str | None) -> str | None:
+        if not raw:
+            return None
+        stripped = raw.strip()
+        if not stripped:
+            return None
+        if size_re and not size_re.fullmatch(stripped):
+            return None
+        return raw
+
     cards = []
     facets = {key: set() for key in ("brand", "store", "size", "platform")}
     fresh_sources = 0
@@ -41,7 +81,12 @@ def query(sources: list[dict], filters: dict, *, now: datetime | None = None,
         if not is_fresh(source["successful_at"], now):
             continue
         fresh_sources += 1
-        for product in source["products"]:
+        for raw_product in source["products"]:
+            product = reconcile_product(raw_product) if reconcile_product else raw_product
+            if product is None:
+                continue
+            if opt_in and not requested_category and product["category"] in opt_in:
+                continue
             plausible_offers = [
                 offer for offer in product["offers"]
                 if offer["availability"] in {"in_stock", "unknown"}
@@ -60,8 +105,9 @@ def query(sources: list[dict], filters: dict, *, now: datetime | None = None,
             if product["platform"]:
                 facets["platform"].add(product["platform"])
             for offer in valid_offers:
-                if offer["size"] and offer["availability"] == "in_stock":
-                    facets["size"].add(offer["size"])
+                sz = valid_size(offer["size"])
+                if sz and offer["availability"] == "in_stock":
+                    facets["size"].add(sz)
             if requested_brand and requested_brand != brand:
                 continue
             if any(filters.get(key) and filters[key] != product[key]
@@ -75,9 +121,10 @@ def query(sources: list[dict], filters: dict, *, now: datetime | None = None,
                     continue
             eligible = []
             for offer in valid_offers:
-                if filters.get("size") and (offer["availability"] != "in_stock"
-                        or size_key(offer["size"]) != size_key(filters["size"])):
-                    continue
+                if filters.get("size"):
+                    sz = valid_size(offer["size"])
+                    if offer["availability"] != "in_stock" or not sz or size_key(sz) != size_key(filters["size"]):
+                        continue
                 if filters.get("stock") and offer["availability"] != "in_stock":
                     continue
                 pct = discount(offer["current_price"], offer["original_price"])
@@ -102,7 +149,25 @@ def query(sources: list[dict], filters: dict, *, now: datetime | None = None,
         size_labels.setdefault(size_key(label), label)
     facets["size"] = set(size_labels.values())
     cards.sort(key=lambda p: (SIGNAL_RANK[p["price_signal"]] if filters.get("sort") == "dropped" else 0,
-                              -p["offer"]["discount"], -p["offer"]["savings"], p["name"], p["url"]))
+                              -p["offer"]["discount"], -p["offer"]["savings"], p["offer"]["current_price"],
+                              p["name"], p["store"], p["url"]))
+    if collapse_duplicates and not filters.get("compare") and not filters.get("store"):
+        collapsed: list[dict] = []
+        seen: dict[tuple[str, str, str, str, str], tuple[dict, set[str]]] = {}
+        for card in cards:
+            key = _dedupe_key(card, valid_size)
+            if key not in seen:
+                others: set[str] = set()
+                seen[key] = (card, others)
+                collapsed.append(card)
+            else:
+                winner, others = seen[key]
+                if card["store"] != winner["store"]:
+                    others.add(card["store"])
+        for winner, others in seen.values():
+            if others:
+                winner["other_store_names"] = tuple(sorted(others))
+        cards = collapsed
     total = len(cards)
     pages = max(1, ceil(total / PAGE_SIZE))
     page = min(filters["page"], pages)

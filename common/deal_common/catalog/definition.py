@@ -44,3 +44,7 @@ class Catalog:
     size_option_names: tuple[str, ...] = ()
     size_value_pattern: str = ""
     brand_aliases: tuple[tuple[str, str], ...] = ()
+    opt_in_categories: tuple[str, ...] = ()
+    collapse_duplicates: bool = False
+    reconcile_product: Callable[[dict], dict | None] | None = None
+    variant_fallback: Callable[[dict], str] | None = None

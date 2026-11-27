@@ -38,6 +38,31 @@ _EXCLUDED_TEXT_RE = re.compile(
     r")\b"
 )
 
+_PROMO_SUFFIX_RE = re.compile(
+    r"(?:\s*\([^)]*(?:black\s+friday|deal|special|sale|promo|closeout|\$\d+)[^)]*\)"
+    r"|\s*[-–—]\s*(?:sizes?\s+vary|t\d+)\b"
+    r"|\s+\bnew\b\s*!*)+\s*$",
+    re.IGNORECASE,
+)
+_COMPLETE_FOIL_RE = re.compile(
+    r"\b("
+    r"complete (?:hydro)?foils?|complete (?:wing|kite|wake|surf)?\s*foil(?:ing)? (?:sets?|packages?|kits?)|"
+    r"(?:hydro)?foil (?:kits?|packages?|sets?|complete sets?)|"
+    r"semi[- ]?complete|efoils?|e-?foils?|electric (?:hydro)?foils?"
+    r")\b"
+)
+_FOIL_COMPONENT_TITLE_RE = re.compile(
+    r"\b("
+    r"front wings?|rear (?:wing )?stabili[sz]ers?|rear wings?|tail wings?|stabili[sz]ers?|"
+    r"(?:foil|carbon|alloy|alumin(?:um|ium))\s+masts?(?:\s*/\s*strut)?|"
+    r"fuselages?|mast\s+plate(?:\s+socket)?|socket\s+plate\s+mount"
+    r")\b"
+)
+_FOIL_COMPONENT_KIND_RE = re.compile(
+    r"\b("
+    r"front wings?|tail wings?|rear wings?|rear stabili[sz]ers?|foil masts?|fuselages?|foil plates?"
+    r")\b|^masts?$|^foil\s*[-–]\s*masts?$"
+)
 _FOIL_WING_RE = re.compile(
     r"\b("
     r"hydrofoils?|foil (?:kits?|packages?|sets?|boards?|masts?|front wings?)|"
@@ -80,6 +105,23 @@ def _shopify(name: str, domain: str, *collections: str, limit: int = 250) -> Ret
     )
 
 
+def is_foil_component(name: str, product_type: str = "") -> bool:
+    norm_title = re.sub(r"\s+", " ", (name or "").strip()).casefold()
+    stripped_title = _PROMO_SUFFIX_RE.sub("", norm_title).strip()
+    kind = re.sub(r"\s+", " ", (product_type or "").strip()).casefold()
+    if _COMPLETE_FOIL_RE.search(stripped_title) or _COMPLETE_FOIL_RE.search(kind):
+        return False
+    if _FOIL_COMPONENT_TITLE_RE.search(stripped_title):
+        return True
+    return bool(kind and _FOIL_COMPONENT_KIND_RE.search(kind) and not re.search(r"\b(?:boards?|complete|kits?|packages?|sets?)\b", kind))
+
+
+def reconcile_product(row: dict) -> dict | None:
+    if row.get("category") == "Foils & wings" and is_foil_component(row.get("name") or "", row.get("source_category") or ""):
+        return {**row, "category": "Foil components"}
+    return row
+
+
 def classify(product: Product) -> Classification | None:
     tags = {t.strip().casefold() for t in product.tags}
     if tags & _EXCLUDED_TAGS:
@@ -93,6 +135,8 @@ def classify(product: Product) -> Classification | None:
         return None
     if re.search(r"\b(?:surfboard fins?|thruster fins?|quad fins?|single fins?|future fins?|fcs ii)\b", combined):
         return None
+    if is_foil_component(product.name, product.product_type or ""):
+        return Classification("Foil components")
     if _FOIL_WING_RE.search(combined):
         return Classification("Foils & wings")
     if _KITE_RE.search(combined):
@@ -118,7 +162,10 @@ CATALOG = Catalog(
         "Surfboards & SUPs",
         "Wetsuits",
         "Fly rods & reels",
+        "Foil components",
     ),
+    opt_in_categories=("Foil components",),
+    reconcile_product=reconcile_product,
     sources=(
         _shopify("REAL Watersports", "www.realwatersports.com", "kiteboarding-sale", "surfing-sale", "wetsuit-sale", "air-box-hand-picked-all-wings"),
         _shopify("Houston Kiteboarding", "houstonkiteboarding.com", "foil-boards", "all-kite-foil", "armstrong-foils", "aluula-wing-kite-products"),

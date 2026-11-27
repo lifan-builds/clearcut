@@ -7,7 +7,9 @@ from deal_common.config import RetailerConfig
 from deal_common.models import Product
 
 FRAME_SIZE_PATTERN = (
-    r"(?!.*\b(?:foot|feet|ft|cable)\b)(?!\d+(?:\.\d+)?\s*[x×])"
+    r"(?!.*\b(?:foot|feet|ft|cable|tubeless|center\s*lock|sram|shimano|campagnolo|xdr|xd|hg|micro\s*spline|6[- ]?bolt|boost|clincher|tubular|hookless|freehub|wheelset)\b)"
+    r"(?!.*\b\d{2,3}/\d{2,3}\s*mm\b)"
+    r"(?!\d+(?:\.\d+)?\s*[x×])"
     r"(?!.*\bwheel\b$)(?:"
     r'(?:\d+(?:\.\d+)?\s*(?:cm|in|tt|s|")?|S[1-6]|Size\s+\d+)'
     r"|(?:[2-6]?X{0,3}[SML]|SM|MD|LG|ML|XM|XMD|R|Regular|All)"
@@ -210,6 +212,7 @@ CATALOG = Catalog(
     size_label="Frame size",
     size_option_names=("size", "frame size", "framesize", "bike size"),
     size_value_pattern=FRAME_SIZE_PATTERN,
+    collapse_duplicates=True,
     brand_aliases=(
         ("3t", "3T"), ("3t bikes", "3T"), ("3t cycling", "3T"),
         ("allied", "Allied"), ("allied cycle works", "Allied"),

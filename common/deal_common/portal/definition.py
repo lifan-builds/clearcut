@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from deal_common.catalog.definition import Catalog
 from deal_common.catalog.query import FRESHNESS_HOURS, query
 from deal_common.catalog.storage import read_sources
 from deal_common.offers import discount, plausible_offer
@@ -122,6 +123,9 @@ def read_shared_catalog_snapshot(
     min_reference: float,
     limit: int = 3,
     now: datetime | None = None,
+    catalog: Catalog | None = None,
+    opt_in_categories: tuple[str, ...] = (),
+    collapse_duplicates: bool = False,
 ) -> PortalSummary | None:
     if not db_path or not db_path.is_file() or db_path.stat().st_size == 0:
         return None
@@ -129,7 +133,18 @@ def read_shared_catalog_snapshot(
         rows = read_sources(db_path, catalog_slug)
     except (sqlite3.Error, ValueError):
         return None
-    result = query(rows, {"min_reference": min_reference, "max_price": 0, "min_discount": 0, "page": 1}, now=now)
+    effective_opt_in = catalog.opt_in_categories if catalog is not None else opt_in_categories
+    effective_collapse = catalog.collapse_duplicates if catalog is not None else collapse_duplicates
+    result = query(
+        rows,
+        {"min_reference": min_reference, "max_price": 0, "min_discount": 0, "page": 1},
+        now=now,
+        brand_aliases=catalog.brand_aliases if catalog is not None else (),
+        opt_in_categories=effective_opt_in,
+        size_value_pattern=catalog.size_value_pattern if catalog is not None else "",
+        collapse_duplicates=effective_collapse,
+        reconcile_product=catalog.reconcile_product if catalog is not None else None,
+    )
     if not result["total"]:
         return None
     highlights: list[PortalHighlight] = []
@@ -168,7 +183,9 @@ def default_portal_catalogs(
     tools_db: Path | None = None,
     camp_db: Path | None = None,
     watersports_db: Path | None = None,
+    catalogs_by_slug: dict[str, Catalog] | None = None,
 ) -> tuple[PortalCatalog, ...]:
+    catalogs_map = catalogs_by_slug or {}
     snow_url = snow_url or os.environ.get("SNOW_SITE_URL", "https://freshpowder.clifan.com")
     cycling_url = cycling_url or os.environ.get("CYCLING_SITE_URL", "https://bigring.clifan.com")
     tools_url = tools_url or os.environ.get("TOOLS_SITE_URL", "https://benchdrop.clifan.com")
@@ -226,7 +243,14 @@ def default_portal_catalogs(
                 ("Framesets", "Framesets"),
             ),
             summary_loader=(
-                (lambda: read_shared_catalog_snapshot(cycling_db, "cycling", world_name="Big Ring", min_reference=1000))
+                (lambda: read_shared_catalog_snapshot(
+                    cycling_db,
+                    "cycling",
+                    world_name="Big Ring",
+                    min_reference=1000,
+                    catalog=catalogs_map.get("cycling"),
+                    collapse_duplicates=True,
+                ))
                 if cycling_db
                 else None
             ),
@@ -254,7 +278,13 @@ def default_portal_catalogs(
                 ("Workshop equipment", "Workshop equipment"),
             ),
             summary_loader=(
-                (lambda: read_shared_catalog_snapshot(tools_db, "tools", world_name="Bench Drop", min_reference=200))
+                (lambda: read_shared_catalog_snapshot(
+                    tools_db,
+                    "tools",
+                    world_name="Bench Drop",
+                    min_reference=200,
+                    catalog=catalogs_map.get("tools"),
+                ))
                 if tools_db
                 else None
             ),
@@ -283,7 +313,14 @@ def default_portal_catalogs(
                 ("Climbing & mountaineering", "Climbing & mountaineering"),
             ),
             summary_loader=(
-                (lambda: read_shared_catalog_snapshot(camp_db, "camp", world_name="Highline", min_reference=120))
+                (lambda: read_shared_catalog_snapshot(
+                    camp_db,
+                    "camp",
+                    world_name="Highline",
+                    min_reference=120,
+                    catalog=catalogs_map.get("camp"),
+                    opt_in_categories=("Travel bags & luggage",),
+                ))
                 if camp_db
                 else None
             ),
@@ -312,7 +349,14 @@ def default_portal_catalogs(
                 ("Fly rods & reels", "Fly rods & reels"),
             ),
             summary_loader=(
-                (lambda: read_shared_catalog_snapshot(watersports_db, "watersports", world_name="Tideline", min_reference=180))
+                (lambda: read_shared_catalog_snapshot(
+                    watersports_db,
+                    "watersports",
+                    world_name="Tideline",
+                    min_reference=180,
+                    catalog=catalogs_map.get("watersports"),
+                    opt_in_categories=("Foil components",),
+                ))
                 if watersports_db
                 else None
             ),

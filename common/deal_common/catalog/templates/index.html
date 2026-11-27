@@ -162,8 +162,9 @@
             <span class="product-store">{{ product.store }}</span>
           </div>
           <h3><a href="{{ offer.url }}" target="_blank" rel="noopener noreferrer">{{ product.name }}</a></h3>
-          <p class="variant">{% if offer.options %}{{ offer.options }}{% else %}Standard configuration{% endif %}</p>
-          {% if product.format %}<div class="tags"><span>{% if product.format == 'Not specified' %}Standard{% else %}{{ product.format }}{% endif %}</span>{% if product.platform %}<span>{{ product.platform }}</span>{% endif %}</div>{% endif %}
+          <p class="variant">{{ offer.options or product.variant_fallback or 'Standard configuration' }}</p>
+          {% set show_format_tag = product.format and (product.format != 'Not specified' or offer.options) %}
+          {% if show_format_tag or product.platform %}<div class="tags">{% if show_format_tag %}<span>{% if product.format == 'Not specified' %}{{ product.variant_fallback or 'Package not specified' }}{% else %}{{ product.format }}{% endif %}</span>{% endif %}{% if product.platform %}<span>{{ product.platform }}</span>{% endif %}</div>{% endif %}
 
           <div class="price-band">
             <div class="prices">

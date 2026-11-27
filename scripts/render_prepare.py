@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
+import re
 import shutil
 import sqlite3
 import sys
@@ -13,13 +15,26 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
-for rel in ("common", "catalogs/fresh-powder/src"):
+for rel in (
+    "common",
+    "catalogs/fresh-powder/src",
+    "catalogs/cycling/src",
+    "catalogs/tools/src",
+    "catalogs/camp/src",
+    "catalogs/watersports/src",
+):
     path_text = str(ROOT / rel)
     if path_text not in sys.path:
         sys.path.insert(0, path_text)
 
 BASE_RELEASE_URL = "https://github.com/lifan-builds/clearcut-data/releases/download/latest-data"
 SNAPSHOT_FILES = ("deals.db", "cycling.db", "tools.db", "camp.db", "watersports.db")
+SHARED_CATALOG_MODULES = {
+    "cycling.db": "cycling_deals.catalog",
+    "tools.db": "tool_deals.catalog",
+    "camp.db": "camp_deals.catalog",
+    "watersports.db": "water_deals.catalog",
+}
 
 
 def _download(url: str, dest: Path, token: str = "") -> None:
@@ -71,6 +86,47 @@ def _prepare_deals_db(path: Path) -> None:
     print(f"[render_prepare] deals.db compacted to {path.stat().st_size:,} bytes", flush=True)
 
 
+def _prepare_shared_catalog_db(path: Path, module_name: str) -> None:
+    catalog = __import__(module_name, fromlist=["CATALOG"]).CATALOG
+    reconcile = catalog.reconcile_product
+    size_re = re.compile(catalog.size_value_pattern, re.IGNORECASE) if catalog.size_value_pattern else None
+    if reconcile is None and size_re is None:
+        return
+    updated_rows = 0
+    with sqlite3.connect(path) as conn:
+        rows = conn.execute("SELECT name, products FROM sources").fetchall()
+        for source_name, raw_products in rows:
+            products = json.loads(raw_products)
+            changed = False
+            next_products = []
+            for product in products:
+                reconciled = reconcile(product) if reconcile else product
+                if reconciled is None:
+                    changed = True
+                    continue
+                if reconciled is not product:
+                    changed = True
+                if size_re is not None:
+                    offers = []
+                    for offer in reconciled.get("offers") or ():
+                        sz = offer.get("size")
+                        if sz and not size_re.fullmatch(str(sz).strip()):
+                            offer = {**offer, "size": None}
+                            changed = True
+                        offers.append(offer)
+                    if changed:
+                        reconciled = {**reconciled, "offers": offers}
+                next_products.append(reconciled)
+            if changed:
+                conn.execute(
+                    "UPDATE sources SET products=? WHERE name=?",
+                    (json.dumps(next_products, allow_nan=False), source_name),
+                )
+                updated_rows += 1
+        conn.commit()
+    print(f"[render_prepare] {path.name}: reconciled {updated_rows} sources ({path.stat().st_size:,} bytes)", flush=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "data")
@@ -85,6 +141,8 @@ def main() -> int:
         _download(url, dest, token=token)
         if filename == "deals.db":
             _prepare_deals_db(dest)
+        elif filename in SHARED_CATALOG_MODULES:
+            _prepare_shared_catalog_db(dest, SHARED_CATALOG_MODULES[filename])
         else:
             print(f"[render_prepare] {filename}: {dest.stat().st_size:,} bytes", flush=True)
     return 0

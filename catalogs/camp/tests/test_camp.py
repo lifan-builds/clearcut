@@ -47,3 +47,93 @@ def test_camp_catalog_sources_are_https_usd():
     for src in CATALOG.sources:
         assert src.currency == "USD"
         assert all(u.startswith("https://") for u in src.scrape_urls)
+
+
+@pytest.mark.parametrize(
+    ("title", "product_type", "expected"),
+    [
+        ("Topo Designs Global Travel Bag Roller", "Backpacks and Bags", "Travel bags & luggage"),
+        ("Topo Designs Global Travel Bag 30L", "Backpacks and Bags", "Travel bags & luggage"),
+        ("Topo Designs Global Travel Bag 30L (S24)", "Backpacks and Bags", "Travel bags & luggage"),
+        ("Topo Designs Apex Global Travel Bag 30L", "Backpacks and Bags", "Travel bags & luggage"),
+        ("Ultralight Air Sleeping Pad", "Sleeping Pads", "Sleeping pads"),
+    ],
+)
+def test_camp_routes_travel_bags_out_of_backpacks_and_sleeping_pads_out_of_bags(title, product_type, expected):
+    product = Product(
+        name=title,
+        url="https://example.com/products/item",
+        current_price=101.4,
+        original_price=169,
+        product_type=product_type,
+        tags=("sleep system",) if "Sleeping Pad" in title else ("backpacks",),
+    )
+    result = classify(product)
+    assert result is not None and result.category == expected
+
+
+def test_camp_default_browse_excludes_travel_bags_and_reconciles_legacy_sleeping_pad_rows(tmp_path):
+    from datetime import UTC, datetime
+
+    from bs4 import BeautifulSoup
+    from deal_common.catalog.storage import save_source
+    from deal_common.catalog.web import create_app
+    from fastapi.testclient import TestClient
+
+    db = tmp_path / "camp.db"
+    now = datetime.now(UTC)
+    legacy_products = [
+        {
+            "name": "Topo Designs Global Travel Bag Roller",
+            "url": "https://kaviso.com/products/roller",
+            "brand": "Topo Designs",
+            "category": "Backpacks",
+            "source_category": "Backpacks and Bags",
+            "format": "",
+            "platform": "",
+            "offers": [{
+                "variant_key": "1",
+                "url": "https://kaviso.com/products/roller?variant=1",
+                "current_price": 169.0,
+                "original_price": 279.0,
+                "size": None,
+                "options": "Black",
+                "availability": "in_stock",
+                "image_url": None,
+                "reference_basis": "retailer_compare_at",
+            }],
+        },
+        {
+            "name": "Ultralight Air Sleeping Pad",
+            "url": "https://seatosummit.com/products/ultralight-pad",
+            "brand": "Sea to Summit",
+            "category": "Sleeping bags & quilts",
+            "source_category": "Sleeping Pads",
+            "format": "",
+            "platform": "",
+            "offers": [{
+                "variant_key": "2",
+                "url": "https://seatosummit.com/products/ultralight-pad?variant=2",
+                "current_price": 101.4,
+                "original_price": 169.0,
+                "size": "Large",
+                "options": "Large",
+                "availability": "in_stock",
+                "image_url": None,
+                "reference_basis": "retailer_compare_at",
+            }],
+        },
+    ]
+    save_source(db, "camp", "Kaviso", now.isoformat(), legacy_products, "complete", {})
+
+    client = TestClient(create_app(CATALOG, db))
+    default_titles = [h.get_text(strip=True) for h in BeautifulSoup(client.get("/").text, "html.parser").select("article.deal-card h3")]
+    assert default_titles == ["Ultralight Air Sleeping Pad"]
+    assert BeautifulSoup(client.get("/?category=Backpacks").text, "html.parser").select("article.deal-card") == []
+    assert BeautifulSoup(client.get("/?category=Sleeping+bags+%26+quilts").text, "html.parser").select("article.deal-card") == []
+    assert [h.get_text(strip=True) for h in BeautifulSoup(client.get("/?category=Sleeping+pads").text, "html.parser").select("article.deal-card h3")] == [
+        "Ultralight Air Sleeping Pad"
+    ]
+    assert [h.get_text(strip=True) for h in BeautifulSoup(client.get("/?category=Travel+bags+%26+luggage").text, "html.parser").select("article.deal-card h3")] == [
+        "Topo Designs Global Travel Bag Roller"
+    ]

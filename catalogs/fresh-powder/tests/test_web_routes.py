@@ -538,3 +538,18 @@ def test_cdn_cache_headers_on_public_html_htmx_and_excluded_routes(isolated_app,
     with TestClient(app_module.create_app()) as private_client:
         assert "CDN-Cache-Control" not in private_client.get("/").headers
         assert "CDN-Cache-Control" not in private_client.get("/invite").headers
+
+
+def test_homepage_has_no_focusable_link_inside_visually_hidden_heading(isolated_app, monkeypatch):
+    monkeypatch.setenv("PUBLIC_MODE", "1")
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    asyncio.run(db_module.init_db(isolated_app))
+    asyncio.run(db_module.upsert_deals([_make_deal()], isolated_app))
+
+    with TestClient(app_module.create_app()) as client:
+        soup = BeautifulSoup(client.get("/").text, "html.parser")
+
+    hidden_heading = soup.select_one("#catalog-heading.visually-hidden")
+    assert hidden_heading is not None
+    assert hidden_heading.select("a, button, input, select, textarea") == []
+    assert soup.select_one('footer a[href="/status"]') is not None

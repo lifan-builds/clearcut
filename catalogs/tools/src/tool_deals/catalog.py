@@ -108,6 +108,20 @@ _PLATFORMS = (
     (re.compile(r"\b24v\b"), "flex", "FLEX 24V"),
     (re.compile(r"\b18v\b"), "ridgid", "Ridgid 18V"),
 )
+_CORDLESS_RE = re.compile(
+    r"\b(?:cordless|m12|m18|12\s*v|18\s*v|20\s*v|24\s*v|36\s*v|40\s*v|60\s*v|"
+    r"flexvolt|lxt|xgt|lithium[- ]?ion|battery[- ]?powered)\b",
+    re.IGNORECASE,
+)
+
+
+def variant_fallback(product: dict) -> str:
+    fmt = product.get("format") or ""
+    if fmt == "Not specified":
+        if product.get("platform") or _CORDLESS_RE.search(product.get("name") or ""):
+            return "Battery/charger inclusion not specified"
+        return "Package not specified"
+    return fmt or "Package not specified"
 
 
 def _shopify(name: str, domain: str, *collections: str) -> RetailerConfig:
@@ -261,6 +275,7 @@ CATALOG = Catalog(
     theme_color="#282922",
     mark="↘",
     formats=("Bare tool", "Kit", "Bundle", "Not specified"),
+    variant_fallback=variant_fallback,
     brand_aliases=(
         ("axiom", "Axiom"), ("axiom precision", "Axiom"),
         ("bessey", "Bessey"), ("bessey tools", "Bessey"),

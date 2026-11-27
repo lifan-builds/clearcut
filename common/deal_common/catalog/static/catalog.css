@@ -602,6 +602,9 @@ label small {
 .post-search-bar .filter-panel[open] {
   flex-basis: 100%;
 }
+.filter-panel:not([open]) > :not(summary) {
+  display: none;
+}
 .filter-toggle-pill {
   display: inline-flex !important;
   align-items: center;

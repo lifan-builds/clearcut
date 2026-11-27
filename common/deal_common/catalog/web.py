@@ -85,7 +85,10 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
         for src in all_sources:
             if not is_fresh(src["successful_at"], now_utc):
                 continue
-            for prod in src["products"]:
+            for raw_prod in src["products"]:
+                prod = catalog.reconcile_product(raw_prod) if catalog.reconcile_product else raw_prod
+                if prod is None:
+                    continue
                 b_name = manufacturer_name(prod["brand"], brand_aliases=catalog.brand_aliases) if catalog.brand_aliases else prod["brand"]
                 s_key = _sig_for(b_name, prod["name"], prod["category"])
                 if s_key:
@@ -119,6 +122,7 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
               min_reference: float = Query(catalog.default_reference, ge=0, le=1000000),
               max_price: float = Query(0, ge=0, le=1000000),
               min_discount: float = Query(0, ge=0, le=100), stock: bool = False,
+              compare: bool = False,
               sort: Literal["discount", "dropped"] = "discount",
               page: int = Query(1, ge=1, le=100000)):
         if brand and catalog.brand_aliases:
@@ -126,8 +130,17 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
         filters = {"q": q, "category": category, "brand": brand, "store": store, "size": size, "format": format,
                    "platform": platform, "min_reference": min_reference, "max_price": max_price,
                    "min_discount": min_discount, "stock": stock, "sort": sort, "page": page}
+        query_filters = {**filters, "compare": compare} if compare else filters
         all_sources = sources()
-        result = query(all_sources, filters, brand_aliases=catalog.brand_aliases)
+        result = query(
+            all_sources,
+            query_filters,
+            brand_aliases=catalog.brand_aliases,
+            opt_in_categories=catalog.opt_in_categories,
+            size_value_pattern=catalog.size_value_pattern,
+            collapse_duplicates=catalog.collapse_duplicates,
+            reconcile_product=catalog.reconcile_product,
+        )
         if size:
             requested_size_key = size_key(size)
             filters["size"] = next((label for label in result["facets"]["size"]
@@ -138,13 +151,25 @@ def create_app(catalog: Catalog, database: Path, *, public_url: str | None = Non
         for card in result["cards"]:
             card["history_url"] = "/history?" + urlencode({"source": card["store"], "product": card["url"],
                                                            "variant": card["offer"]["variant_key"]})
+            card["variant_fallback"] = catalog.variant_fallback(card) if catalog.variant_fallback else ""
             s_key = _sig_for(card["brand"], card["name"], card["category"])
-            other_cnt = max(0, len(model_stores[s_key] - {card["store"]})) if s_key else 0
+            other_stores = set(card.get("other_store_names") or ())
+            if s_key:
+                other_stores |= model_stores[s_key]
+            other_stores.discard(card["store"])
+            other_cnt = len(other_stores)
             card["other_shops"] = other_cnt
-            card["compare_url"] = ("/?" + urlencode({"q": f"{card['brand']} {s_key[1]}"}) + "#deals") if other_cnt and s_key else ""
+            if other_cnt:
+                compare_q = card["name"] if card.get("other_store_names") else (f"{card['brand']} {s_key[1]}" if s_key else card["name"])
+                card["compare_url"] = "/?" + urlencode({"q": compare_q, "compare": "true"}) + "#deals"
+            else:
+                card["compare_url"] = ""
 
         def page_url(number):
-            return "/?" + urlencode({**filters, "page": number, "stock": str(stock).lower()}) + "#deals"
+            params = {**filters, "page": number, "stock": str(stock).lower()}
+            if compare:
+                params["compare"] = "true"
+            return "/?" + urlencode(params) + "#deals"
 
         labels = {"q": "Search", "category": "Category", "brand": "Brand", "store": "Retailer",
                   "size": catalog.size_label, "format": "Package", "platform": "Platform",

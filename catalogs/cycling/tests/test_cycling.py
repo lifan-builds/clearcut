@@ -131,6 +131,8 @@ def test_supported_frame_size_values(value):
 
 @pytest.mark.parametrize("value", [
     "Turquoise", "Cobalt", "Raw Carbon", '24" wheel',
+    '27.5" Tubeless 110/148mm SRAM XD Centerlock',
+    '29" Tubeless 110/148mm Shimano MicroSpline 6-Bolt',
     "2.5 foot SeatSaver Cable", "4 foot", "7 feet", "20 x 2.0-2.125", "26 x 2.0-2.125",
 ])
 def test_mislabeled_color_or_wheel_size_is_not_frame_size(value):
@@ -280,3 +282,96 @@ def test_cycling_brand_aliases_normalize_diacritics_and_vendor_suffixes(raw_bran
         offers=[VariantOffer("1", f"{url}?variant=1", 2500, 4000, size="54cm", availability="in_stock")],
     )
     assert normalize([bike], CATALOG, "example.com")[0]["brand"] == canonical
+
+
+def test_cycling_collapses_identical_multistore_offers_and_excludes_wheel_specs_from_size_facet(tmp_path):
+    from bs4 import BeautifulSoup
+    from deal_common.catalog.storage import save_source
+    from deal_common.catalog.web import create_app
+    from deal_common.portal.definition import read_shared_catalog_snapshot
+    from fastapi.testclient import TestClient
+
+    now = datetime.now(UTC)
+    db = tmp_path / "cycling.db"
+
+    def make_vaast(domain: str, title: str, options: str, sale: float, ref: float):
+        url = f"https://{domain}/products/vaast-{sale}"
+        return {
+            "name": title,
+            "url": url,
+            "brand": "Vaast Bikes",
+            "category": "Electric bikes",
+            "format": "",
+            "platform": "",
+            "offers": [{
+                "variant_key": "med",
+                "url": f"{url}?variant=med",
+                "current_price": sale,
+                "original_price": ref,
+                "size": "Medium",
+                "options": options,
+                "availability": "in_stock",
+                "image_url": "https://cdn.example.com/bike.jpg",
+                "reference_basis": "retailer_compare_at",
+            }],
+        }
+
+    xt_title = "Vaast Bikes E/1 XT/SLX 27.5 E-Bike - Nostalgic Sea Blue-Ocean Frost"
+    env_title = "Vaast Bikes E/1 Enviolo 27.5 E-Bike - Vibrant Berry Red-Black Cherry"
+    wheelset = {
+        "name": "Reynolds TR 307 Wheelset",
+        "url": "https://contenderbicycles.com/products/tr307",
+        "brand": "Reynolds",
+        "category": "Wheelsets",
+        "format": "",
+        "platform": "",
+        "offers": [{
+            "variant_key": "w1",
+            "url": "https://contenderbicycles.com/products/tr307?variant=w1",
+            "current_price": 799.0,
+            "original_price": 1599.0,
+            "size": '27.5" Tubeless 110/148mm SRAM XD Centerlock',
+            "options": '27.5" Tubeless 110/148mm SRAM XD Centerlock / Gray/Carbon',
+            "availability": "in_stock",
+            "image_url": None,
+            "reference_basis": "retailer_compare_at",
+        }],
+    }
+    save_source(db, "cycling", "Cambria Bike", now.isoformat(), [
+        make_vaast("cambriabike.com", xt_title, "Nostalgic Sea Blue - Ocean Frost / Medium", 1499.99, 7699.99),
+        make_vaast("cambriabike.com", env_title, "Vibrant Berry Red - Black Cherry / Medium", 1999.99, 8699.99),
+    ], "complete", {})
+    save_source(db, "cycling", "Colorado Cyclist", now.isoformat(), [
+        make_vaast("coloradocyclist.com", xt_title, "Nostalgic Sea Blue - Ocean Frost / Medium", 1499.99, 7699.99),
+        make_vaast("coloradocyclist.com", env_title, "Vibrant Berry Red - Black Cherry / Medium", 1999.99, 8699.99),
+    ], "complete", {})
+    save_source(db, "cycling", "Contender Bicycles", now.isoformat(), [wheelset], "complete", {})
+
+    client = TestClient(create_app(CATALOG, db))
+    soup = BeautifulSoup(client.get("/").text, "html.parser")
+    cards = soup.select("article.deal-card")
+    assert [c.select_one("h3").get_text(strip=True) for c in cards] == [
+        xt_title,
+        env_title,
+        "Reynolds TR 307 Wheelset",
+    ]
+    assert cards[0].select_one(".other-shops-link").get_text(strip=True) == "+1 shop"
+    assert cards[1].select_one(".other-shops-link").get_text(strip=True) == "+1 shop"
+
+    compare_url = cards[0].select_one(".other-shops-link")["href"]
+    compare_cards = BeautifulSoup(client.get(compare_url).text, "html.parser").select("article.deal-card")
+    assert len(compare_cards) == 2
+    assert {c.select_one(".product-store").get_text(strip=True) for c in compare_cards} == {
+        "Cambria Bike",
+        "Colorado Cyclist",
+    }
+
+    size_options = [o.get_text(strip=True) for o in soup.select('select[name="size"] option')]
+    assert "Medium" in size_options
+    assert not any("Tubeless" in opt or "Centerlock" in opt for opt in size_options)
+    assert '27.5" Tubeless 110/148mm SRAM XD Centerlock / Gray/Carbon' in cards[2].get_text()
+
+    hub_summary = read_shared_catalog_snapshot(db, "cycling", world_name="Big Ring", min_reference=1000, now=now, catalog=CATALOG)
+    assert hub_summary is not None
+    assert hub_summary.live_deals == 3
+    assert [h.name for h in hub_summary.highlights[:2]] == [xt_title, env_title]
